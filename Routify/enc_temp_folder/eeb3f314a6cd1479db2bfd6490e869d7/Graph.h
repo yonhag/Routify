@@ -67,7 +67,7 @@ public:
 private:
     void fetchAPIData();
     void fetchGTFSStops();                   // Parses stops.txt to extract station code, name, and coordinates.
-    void fetchGTFSTransportationLines();     // Parses routes.txt, trips.txt, and stop_times.txt to add edges.  q
+    void fetchGTFSTransportationLines();     // Parses routes.txt, trips.txt, and stop_times.txt to add edges.
 
     bool retrieveExistingData();
 

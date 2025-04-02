@@ -2,11 +2,11 @@ import socket
 import json
 
 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-    s.connect(("127.0.0.1", 8200))
+    s.connect(("46.116.236.185", 8200))
     print(f"Successfully connected")
 
     request = {
-        'type': 0,
+        'type': 1,
         'stationId': 39107
     }
 

@@ -161,14 +161,14 @@ void Graph::fetchGTFSTransportationLines() {
             newLine.arrivalTimes.push_back(time);
             newLine.price = 0;
             station->lines.push_back(newLine);
-            lastLine = &station->lines.back();  // lastLine references the last element inserted
+            lastLine = &station->lines.back();  // Now lastLine references the new element.
             // std::cout << "Added line " << line_code << " to station " << stationCode << std::endl;
         }
 
         lastId = id;  // Update lastId to the current id.
 
         if (i % 1000000 == 0)
-            std::cout << "Processed " << i / 1000000 << "M lines, out of 20.6M" << std::endl;
+            std::cout << "Processed " << i % 1000000 << "M lines, out of 20.6M" << std::endl;
         i++;          // Increment the line counter
     }
     stopTimesFile.close();
