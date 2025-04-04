@@ -52,9 +52,6 @@ public:
     // Adds a station to the graph.
     void addStation(const int code, const std::string& name, double latitude, double longitude);
 
-    // Adds an edge from the station with id 'from' to station 'to'.
-    void addLine(int from, int to, double travelTime, double price, TransportMethod type);
-
     // Computes the weight for an edge.
     int calculateWeight(double travelTime, double price) const;
 
@@ -62,14 +59,12 @@ public:
     const std::vector<TransportationLine>& getLinesFrom(int nodeId) const;
 
     // Returns a pointer to the station with the given id.
-    const Station* getStationById(int id) const;
+    Station& getStationById(int id);
 
 private:
     void fetchAPIData();
     void fetchGTFSStops();                   // Parses stops.txt to extract station code, name, and coordinates.
-    void fetchGTFSTransportationLines();     // Parses routes.txt, trips.txt, and stop_times.txt to add edges.  q
-
-    bool retrieveExistingData();
+    void fetchGTFSTransportationLines();     // Parses routes.txt, trips.txt, and stop_times.txt to add edges.
 
     std::unordered_map<int, Station> _map;
 };

@@ -41,8 +41,6 @@ static int convertTimeToMinutes(const std::string& timeStr) {
 }
 
 Graph::Graph() {
-    if (retrieveExistingData())
-        return;
     fetchAPIData();
 }
 
@@ -51,15 +49,6 @@ Graph::~Graph() {
 
 void Graph::addStation(const int code, const std::string& name, double latitude, double longitude) {
     this->_map.emplace(code, Station(name, latitude, longitude));
-}
-
-void Graph::addLine(int from, int to, double travelTime, double price, TransportMethod type) {
-    auto it = this->_map.find(from);
-    if (it == this->_map.end())
-        throw std::runtime_error("Source station not found");
-    TransportationLine line("", to, travelTime, price, type);
-    line.weight = calculateWeight(travelTime, price);
-    it->second.lines.push_back(line);
 }
 
 int Graph::calculateWeight(double travelTime, double price) const {
@@ -74,9 +63,12 @@ const std::vector<Graph::TransportationLine>& Graph::getLinesFrom(int nodeId) co
     return empty;
 }
 
-const Graph::Station* Graph::getStationById(int id) const {
-    auto it = this->_map.find(id);
-    return (it != this->_map.end()) ? &it->second : nullptr;
+Graph::Station& Graph::getStationById(int id) {
+    auto it = _map.find(id);
+    if (it == _map.end()) {
+        throw std::out_of_range("Station with the given ID not found");
+    }
+    return it->second;
 }
 
 void Graph::fetchAPIData() {
@@ -136,23 +128,16 @@ void Graph::fetchGTFSTransportationLines() {
             lastLine->to = stationCode;
         }
 
-        auto stationIt = this->_map.find(stationCode);
-        if (stationIt == this->_map.end()) {
-            std::cout << "STATION #" << stationCode << " NOT FOUND" << std::endl;
-            continue;
-        }
-
-        Station* station = &stationIt->second;
+        auto& station = getStationById(stationCode);
         // Use a temporary TransportationLine with the same id to find an existing one.
         TransportationLine tempLine;
         tempLine.id = line_code;
 
-        auto it = std::find(station->lines.begin(), station->lines.end(), tempLine);
-        if (it != station->lines.end()) {
+        auto it = std::find(station.lines.begin(), station.lines.end(), tempLine);
+        if (it != station.lines.end()) {
             // Found an existing line, add the arrival time.
             it->arrivalTimes.push_back(time);
             lastLine = &(*it);  // Update lastLine to point to the actual element in the vector.
-            // std::cout << "Added time " << time << " for line " << line_code << std::endl;
         }
         else {
             // Create a new transportation line.
@@ -160,21 +145,15 @@ void Graph::fetchGTFSTransportationLines() {
             newLine.id = line_code;
             newLine.arrivalTimes.push_back(time);
             newLine.price = 0;
-            station->lines.push_back(newLine);
-            lastLine = &station->lines.back();  // lastLine references the last element inserted
-            // std::cout << "Added line " << line_code << " to station " << stationCode << std::endl;
+            station.lines.push_back(newLine);
+            lastLine = &station.lines.back();  // lastLine references the last element inserted
         }
 
         lastId = id;  // Update lastId to the current id.
 
         if (i % 1000000 == 0)
-            std::cout << "Processed " << i / 1000000 << "M lines, out of 20.6M" << std::endl;
+            std::cout << "Processed " << i / 1000000 << "B lines, out of 20.6B" << std::endl;
         i++;          // Increment the line counter
     }
     stopTimesFile.close();
-}
-
-
-bool Graph::retrieveExistingData() {
-    return false;
 }

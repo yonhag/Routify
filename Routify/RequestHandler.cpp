@@ -18,26 +18,34 @@ void RequestHandler::handleRequest(Socket clientSocket)
     std::string received = clientSocket.receiveMessage();
     std::cout << "Received: " << received << std::endl;
 
+    if (received.empty())
+    {
+        clientSocket.sendMessage("Error");
+        return;
+    }
+
     json j = json::parse(received);
     int type = j["type"];
     switch (type) {
     case 0:
         for (const Graph::TransportationLine& line : this->_graph.getLinesFrom(int(j["stationId"]))) {
-            response.append("ID: " + (line.id) + ", To: " + std::to_string(line.to) + ", " + _graph.getStationById(line.to)->name + "\n");
+            response.append("ID: " + (line.id) + ", To: " + std::to_string(line.to) + ", " + _graph.getStationById(line.to).name + "\n");
         }
         break;
     case 1:
-        const Graph::Station* st = this->_graph.getStationById(j["stationId"]);
         json k;
-        if (!st)
-        {
-            k = "Error";
-            break;
+        try {
+            const Graph::Station& st = this->_graph.getStationById(j["stationId"]);
+            k = st;
         }
-        k = *st;
+        catch (std::exception) {
+            response = "Error";
+        }
         response.append(k.dump());
         break;
     }
+
+    std::cout << response << std::endl;
 
     clientSocket.sendMessage(response);
 }
