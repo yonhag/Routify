@@ -58,13 +58,14 @@ public:
     // Returns the edges from a given station id.
     const std::vector<TransportationLine>& getLinesFrom(int nodeId) const;
 
-    // Returns a pointer to the station with the given id.
-    Station& getStationById(int id);
+    const Station& getStationById(int id) const;
 
 private:
     void fetchAPIData();
     void fetchGTFSStops();                   // Parses stops.txt to extract station code, name, and coordinates.
     void fetchGTFSTransportationLines();     // Parses routes.txt, trips.txt, and stop_times.txt to add edges.
+
+    Station& getStationRefById(int id);
 
     std::unordered_map<int, Station> _map;
 };

@@ -63,7 +63,16 @@ const std::vector<Graph::TransportationLine>& Graph::getLinesFrom(int nodeId) co
     return empty;
 }
 
-Graph::Station& Graph::getStationById(int id) {
+const Graph::Station& Graph::getStationById(int id) const
+{
+    auto it = _map.find(id);
+    if (it == _map.end()) {
+        throw std::out_of_range("Station with the given ID not found");
+    }
+    return it->second;
+}
+
+Graph::Station& Graph::getStationRefById(int id) {
     auto it = _map.find(id);
     if (it == _map.end()) {
         throw std::out_of_range("Station with the given ID not found");
@@ -128,7 +137,7 @@ void Graph::fetchGTFSTransportationLines() {
             lastLine->to = stationCode;
         }
 
-        auto& station = getStationById(stationCode);
+        auto& station = getStationRefById(stationCode);
         // Use a temporary TransportationLine with the same id to find an existing one.
         TransportationLine tempLine;
         tempLine.id = line_code;
