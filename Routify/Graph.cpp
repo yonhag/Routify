@@ -72,6 +72,16 @@ const Graph::Station& Graph::getStationById(int id) const
     return it->second;
 }
 
+int Graph::getStationIdByName(const std::string& name) const
+{
+    for (const auto& [id, station] : _map) {
+        if (station.name == name) {
+            return id;
+        }
+    }
+    throw std::runtime_error("Station not found " + name);
+}
+
 Graph::Station& Graph::getStationRefById(int id) {
     auto it = _map.find(id);
     if (it == _map.end()) {
@@ -95,6 +105,7 @@ void Graph::fetchGTFSStops() {
     std::string header;
     std::getline(file, header); // skip header
 
+    int i = 0;
     std::string line;
     while (std::getline(file, line)) {
         auto tokens = splitCSV(line);
@@ -104,8 +115,11 @@ void Graph::fetchGTFSStops() {
         double stop_lat = std::stod(tokens[4]);
         double stop_lon = std::stod(tokens[5]);
         addStation(stop_code, stop_name, stop_lat, stop_lon);
-        std::cout << "Added station: " << stop_code << " with name " << stop_name << std::endl;
+        if (i % 10000 == 0)
+            std::cout << "Added " << i << " stations out of 34.5K" << std::endl;
+        i++;
     }
+    std::cout << "Done!" << std::endl;
     file.close();
 }
 
@@ -164,5 +178,6 @@ void Graph::fetchGTFSTransportationLines() {
             std::cout << "Processed " << i / 1000000 << "B lines, out of 20.6B" << std::endl;
         i++;          // Increment the line counter
     }
+    std::cout << "Done!" << std::endl;
     stopTimesFile.close();
 }

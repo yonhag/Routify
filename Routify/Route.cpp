@@ -3,41 +3,50 @@
 #include <ctime>
 #include <algorithm>
 
-Route::Route() : _lines(), _stations()
+Route::Route() : _stations()
 {
 }
 
 Route::Route(const std::vector<Graph::Station>& stations, const std::vector<Graph::TransportationLine>& lines)
-    : _stations(stations), _lines(lines)
 {
+    for (int i = 0; i < stations.size() && i < lines.size(); i++) {
+        this->_stations.push_back(VisitedStation(stations[i], lines[i]));
+    }
+}
+
+void Route::addVisitedStation(const VisitedStation& vs)
+{
+    this->_stations.push_back(vs);
 }
 
 double Route::getTotalTime() const {
     double totalTime = 0.0;
-    for (const auto& edge : _lines) {
-        totalTime += edge.travelTime;
+    for (const auto& edge : this->_stations) {
+        totalTime += edge.line.travelTime;
     }
     return totalTime;
 }
 
 double Route::getTotalCost() const {
     double totalCost = 0.0;
-    for (const auto& edge : _lines)
-        totalCost += edge.price;
+    for (const auto& edge : this->_stations)
+        totalCost += edge.line.price;
     return totalCost;
 }
 
 int Route::getTransferCount() const {
-    if (_lines.empty()) return 0;
+    if (this->_stations.empty()) return 0;
+
     int transfers = 0;
-    for (size_t i = 1; i < _lines.size(); ++i) {
-        if (_lines[i].type != _lines[i - 1].type)
+    for (size_t i = 1; i < this->_stations.size(); ++i)
+        if (this->_stations[i].line.id != this->_stations[i - 1].line.id)
             transfers++;
-    }
+
     return transfers;
 }
 
-const std::vector<Graph::Station>& Route::getStations() const {
+const std::vector<Route::VisitedStation> Route::getVisitedStations() const
+{
     return this->_stations;
 }
 
@@ -51,14 +60,14 @@ double Route::getFitness() const {
 }
 
 void Route::mutate(double mutationRate) {
-    std::srand(static_cast<unsigned>(std::time(nullptr)));
-
+    // Ensure route has at least three stations: source, at least one intermediate, destination.
     if (this->_stations.size() <= 2) return;
 
+    // Generate a random probability.
     double r = static_cast<double>(std::rand()) / RAND_MAX;
     if (r < mutationRate) {
         int minIndex = 1;
-        int maxIndex = static_cast<int>(this->_stations.size()) - 2;
+        int maxIndex = this->_stations.size() - 2; // leave the last station intact
         int i = minIndex + std::rand() % (maxIndex - minIndex + 1);
         int j = minIndex + std::rand() % (maxIndex - minIndex + 1);
         while (j == i) {
@@ -67,3 +76,4 @@ void Route::mutate(double mutationRate) {
         std::swap(this->_stations[i], this->_stations[j]);
     }
 }
+

@@ -14,11 +14,13 @@ public:
     static Route crossover(const Route& parent1, const Route& parent2);
     void performSelection();
 
+    std::vector<Route> getRoutes();
 private:
     std::vector<Route> _routes;
     int _startId;
     int _destinationId;
     const Graph& _graph;
+    const int _maxWalkableDistance = 1; // KM
 
     Route generateRandomRoute() const;
 };

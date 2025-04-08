@@ -38,6 +38,10 @@ public:
         Station(const std::string& name, double latitude, double longitude)
             : name(name), latitude(latitude), longitude(longitude) {
         }
+
+        bool operator==(const Station& other) const {
+            return this->name == other.name;
+        }
     };
 
 
@@ -59,6 +63,8 @@ public:
     const std::vector<TransportationLine>& getLinesFrom(int nodeId) const;
 
     const Station& getStationById(int id) const;
+
+    int getStationIdByName(const std::string& name) const;
 
 private:
     void fetchAPIData();
