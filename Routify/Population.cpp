@@ -30,40 +30,26 @@ double Population::haversineDistance(double lat1, double lon1, double lat2, doub
 }
 
 
-// --- BFS Pathfinding Implementation (Modified BfsNode and Reconstruction) ---
+// --- BFS Pathfinding Implementation (Modified Reconstruction) ---
 namespace {
 
-    struct BfsNode {
+    struct BfsNode { // Keep BfsNode as is (stores parent code)
         int stationCode;
         int parentCode;
-        // Store only ID and destination code of the line from parent
         std::string lineIdFromParent;
-        int lineToFromParent; // Store the 'to' code explicitly
-
-        BfsNode(int code = -1, int parent = -1, std::string lineId = "", int lineTo = -1)
-            : stationCode(code), parentCode(parent), lineIdFromParent(lineId), lineToFromParent(lineTo) {
-        }
+        int lineToFromParent;
+        BfsNode(int c = -1, int p = -1, std::string lId = "", int lTo = -1) : stationCode(c), parentCode(p), lineIdFromParent(lId), lineToFromParent(lTo) {}
     };
 
-    // Finds *the specific* TransportationLine object used in the graph
-    // Returns a dummy line if not found (shouldn't happen if BFS data is valid)
     const Graph::TransportationLine& findLineInGraph(const Graph& graph, int fromCode, const std::string& lineId, int lineTo) {
-        static Graph::TransportationLine dummyLine; // Reusable dummy
+        // (Keep findLineInGraph as is)
+        static Graph::TransportationLine dummyLine;
         try {
             const auto& lines = graph.getLinesFrom(fromCode);
-            for (const auto& line : lines) {
-                if (line.id == lineId && line.to == lineTo) {
-                    return line; // Return reference to the line in the graph
-                }
-            }
+            for (const auto& line : lines) { if (line.id == lineId && line.to == lineTo) return line; }
         }
-        catch (const std::out_of_range&) {
-            // From code doesn't exist? Should have been caught earlier.
-        }
-        std::cerr << "Warning: findLineInGraph failed for from=" << fromCode
-            << ", id='" << lineId << "', to=" << lineTo << std::endl;
-        dummyLine.id = "Error"; // Mark dummy as error
-        return dummyLine;
+        catch (...) {}
+        dummyLine.id = "Error"; return dummyLine;
     }
 
     std::vector<Route::VisitedStation> findPathBFS(
@@ -75,75 +61,63 @@ namespace {
         std::queue<int> q;
         std::unordered_map<int, BfsNode> visitedInfo;
 
-        if (!graph.hasStation(startCode) || !graph.hasStation(endCode)) {
-            std::cerr << "BFS Error: Start or end code not found in graph." << std::endl;
-            return path;
-        }
+        if (!graph.hasStation(startCode) || !graph.hasStation(endCode)) return path;
 
         q.push(startCode);
-        // For start node, use special "Start" ID and its own code as 'to' marker?
-        visitedInfo[startCode] = BfsNode(startCode, -1, "Start", startCode);
+        visitedInfo[startCode] = BfsNode(startCode, -1, "Start", startCode); // Parent code is -1 for start
 
         int currentCode = -1;
         bool found = false;
-        while (!q.empty()) {
-            currentCode = q.front();
-            q.pop();
-
-            if (currentCode == endCode) {
-                found = true;
-                break;
-            }
-
+        while (!q.empty()) { // (BFS Exploration loop remains the same)
+            currentCode = q.front(); q.pop();
+            if (currentCode == endCode) { found = true; break; }
             try {
-                const auto& outgoingLines = graph.getLinesFrom(currentCode);
-                for (const auto& line : outgoingLines) {
+                const auto& lines = graph.getLinesFrom(currentCode);
+                for (const auto& line : lines) {
                     int nextCode = line.to;
                     if (graph.hasStation(nextCode) && visitedInfo.find(nextCode) == visitedInfo.end()) {
-                        // Store parent, line ID, and line's 'to' code
                         visitedInfo[nextCode] = BfsNode(nextCode, currentCode, line.id, line.to);
                         q.push(nextCode);
                     }
                 }
             }
-            catch (const std::out_of_range& e) {
-                std::cerr << "BFS Warning: Error getting lines from code " << currentCode << ": " << e.what() << std::endl;
-                continue;
-            }
+            catch (...) { continue; }
         }
 
-        // --- Reconstruct Path (Modified) ---
+        // --- Reconstruct Path (MODIFIED) ---
         if (found) {
             std::vector<Route::VisitedStation> reversed_path;
             int traceCode = endCode;
 
             while (traceCode != -1) {
                 auto it = visitedInfo.find(traceCode);
-                if (it == visitedInfo.end()) { /* Error handling */ return {}; }
-                const BfsNode& nodeInfo = it->second;
+                if (it == visitedInfo.end()) return {};
+                const BfsNode& nodeInfo = it->second; // Info for the current traceCode station
 
                 try {
-                    const Graph::Station& station = graph.getStationById(traceCode); // Get station object
+                    const Graph::Station& station = graph.getStationById(traceCode);
 
-                    // Find the actual line object used to reach this station from its parent
+                    // Find the actual line object used
                     const Graph::TransportationLine& lineUsed =
-                        (nodeInfo.parentCode == -1) // Is this the start node?
-                        ? Graph::TransportationLine("Start", startCode, 0, 0, Graph::TransportMethod::Walk) // Create dummy Start line
+                        (nodeInfo.parentCode == -1)
+                        ? Graph::TransportationLine("Start", startCode, 0, 0, Graph::TransportMethod::Walk) // Dummy start line
                         : findLineInGraph(graph, nodeInfo.parentCode, nodeInfo.lineIdFromParent, nodeInfo.lineToFromParent);
 
-                    if (lineUsed.id == "Error" && nodeInfo.parentCode != -1) {
-                        std::cerr << "BFS Error: Path reconstruction failed, line not found in graph." << std::endl;
-                        return {}; // Line lookup failed
-                    }
+                    if (lineUsed.id == "Error" && nodeInfo.parentCode != -1) return {}; // Line lookup failed
 
-                    // Add the VisitedStation using the retrieved station and line objects
-                    reversed_path.push_back(Route::VisitedStation(station, lineUsed));
+                    // *** ADDED: Pass nodeInfo.parentCode to VisitedStation constructor ***
+                    reversed_path.push_back(Route::VisitedStation(station, lineUsed, nodeInfo.parentCode));
                     traceCode = nodeInfo.parentCode; // Move to the parent
 
                 }
-                catch (const std::out_of_range& e) { /* Error handling */ return {}; }
-                // Safety break...
-                if (reversed_path.size() > graph.getStationCount() * 2) { /* Error handling */ return {}; }
+                catch (const std::out_of_range&) { return {}; }
+                catch (const std::exception& e_rec) { std::cerr << "BFS Rec Err: " << e_rec.what() << std::endl; return {}; }
+
+                // Safety break
+                if (reversed_path.size() > graph.getStationCount() + 5) { // Adjusted safety limit
+                    std::cerr << "BFS Error: Path reconstruction loop or excessive length." << std::endl;
+                    return {};
+                }
             }
             std::reverse(reversed_path.begin(), reversed_path.end());
             path = std::move(reversed_path);
@@ -155,15 +129,13 @@ namespace {
 
 } // end anonymous namespace
 
-// --- Population Constructor (Uses the modified BFS) ---
+// --- Population Constructor (No changes needed here, uses the fixed BFS) ---
 Population::Population(int size, int startId, int destinationId, const Graph& graph)
     : _startId(startId), _destinationId(destinationId), _graph(graph)
 {
     // ... (validation, seeding, reserve) ...
     if (size <= 0) { throw std::invalid_argument("Population size must be positive."); }
-    std::random_device rd;
-    _gen.seed(rd());
-    _routes.reserve(size);
+    std::random_device rd; _gen.seed(rd()); _routes.reserve(size);
     if (!graph.hasStation(startId) || !graph.hasStation(destinationId)) {
         throw std::runtime_error("Population initialization failed: Invalid start/destination ID provided.");
     }
@@ -180,43 +152,32 @@ Population::Population(int size, int startId, int destinationId, const Graph& gr
     Route baseRoute;
     for (const auto& vs : bfsPathStations) { baseRoute.addVisitedStation(vs); }
 
-    // --- DEBUG Print for constructed Base Route ---
-    // (Keep the debug printing block from the previous response here if needed)
-    // --- END DEBUG ---
-
-    // Verify the base route - THIS SHOULD NOW PASS
+    // --- Re-enable Validation ---
     if (!baseRoute.isValid(_startId, _destinationId, _graph)) {
-        std::cerr << "Error: BFS generated path FAILED validation even after BFS fix! (BFS Path Size: " << bfsPathStations.size() << ")" << std::endl;
-        // If this still fails, the issue might be deeper in isValid's logic or graph data itself.
-        throw std::runtime_error("Population initialization failed: BFS path invalid.");
+        std::cerr << "Error: BFS generated path FAILED validation AFTER FIX! (BFS Path Size: " << bfsPathStations.size() << ")" << std::endl;
+        // Print detailed debug info for the baseRoute if this happens
+        throw std::runtime_error("Population initialization failed: BFS path invalid despite fixes.");
     }
     _routes.push_back(baseRoute);
     std::cout << "Generated baseline route via BFS (Length: " << bfsPathStations.size() << " steps)." << std::endl;
 
     // --- Step 2: Generate Remaining Population by Mutating ---
-    // ... (Mutation loop remains the same as previous response) ...
+    // (Mutation loop remains the same - relies on mutate function)
     size_t routesNeeded = static_cast<size_t>(size);
-    size_t safetyCounter = 0;
-    const size_t maxAttempts = routesNeeded * 10;
-    const int minMutationSteps = 5;
-    const int maxMutationSteps = 20;
-
-    while (_routes.size() < routesNeeded && safetyCounter < maxAttempts) {
-        safetyCounter++;
-        Route mutatedRoute = baseRoute; // Start with a copy
+    size_t safetyCounter = 0; const size_t maxAttempts = routesNeeded * 10;
+    const int minMutationSteps = 5; const int maxMutationSteps = 20;
+    while (_routes.size() < routesNeeded && safetyCounter < maxAttempts) { /* ... mutation logic ... */
+        safetyCounter++; Route mutatedRoute = baseRoute;
         std::uniform_int_distribution<> numMutationsDist(minMutationSteps, maxMutationSteps);
         int mutationsToApply = numMutationsDist(_gen);
-        for (int m = 0; m < mutationsToApply; ++m) {
-            mutatedRoute.mutate(1.0, _gen, _startId, _destinationId, _graph);
-        }
-        if (mutatedRoute.isValid(_startId, _destinationId, _graph)) {
-            _routes.push_back(mutatedRoute);
-        }
+        for (int m = 0; m < mutationsToApply; ++m) { mutatedRoute.mutate(1.0, _gen, _startId, _destinationId, _graph); }
+        if (mutatedRoute.isValid(_startId, _destinationId, _graph)) { _routes.push_back(mutatedRoute); }
     }
     std::cout << "Generated " << _routes.size() << " initial routes total (using " << safetyCounter << " mutation attempts)." << std::endl;
     if (_routes.empty()) { throw std::runtime_error("Population became empty after mutation phase."); }
     if (_routes.size() < routesNeeded) { std::cerr << "Warning: Could only generate " << _routes.size() << "/" << size << " valid routes via BFS+Mutation." << std::endl; }
 }
+
 
 // --- Population Evolution Methods ---
 

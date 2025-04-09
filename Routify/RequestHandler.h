@@ -9,7 +9,12 @@ class RequestHandler {
 public:
 	RequestHandler();
 	void handleRequest(Socket clientSocket);
-	std::string findBestRoutes(const json& request);
+
 private:
+	json handleGetLines(const json& request_json);
+	json handleFindRoute(const json& request_json);
+	json handleGetStationInfo(const json& request_json);
+
+
 	Graph _graph;
 };
