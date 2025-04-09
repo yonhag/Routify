@@ -13,8 +13,9 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         'stationId': 39105,
         'startStationId': 39105, # Gur Shazar
         'destStationId': 20269,  # Begin Azrieli
-        'gen': 100,
-        'mut': 0.5
+        'gen': 200,
+        'mut': 0.5,
+        'pop': 20
     }
 
     s.sendall(json.dumps(request).encode())

@@ -65,7 +65,7 @@ std::string RequestHandler::findBestRoutes(const json& j) {
     std::string response;
 
     // Create a population with 5 routes from startStationId to destStationId.
-    Population pop(5, int(j["startStationId"]), int(j["destStationId"]), this->_graph);
+    Population pop(int(j["pop"]), int(j["startStationId"]), int(j["destStationId"]), this->_graph);
 
     auto routes = pop.getRoutes();
     for (const auto& i : routes) {

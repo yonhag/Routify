@@ -74,7 +74,6 @@ const Graph::Station& Graph::getStationById(int id) const
 
 int Graph::getStationIdByName(const std::string& name) const
 {
-    std::cout << name << std::endl;
     for (const auto& [id, station] : _map) {
         if (station.name == name) {
             return id;
