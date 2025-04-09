@@ -67,19 +67,30 @@ const Graph::Station& Graph::getStationById(int id) const
 {
     auto it = _map.find(id);
     if (it == _map.end()) {
-        throw std::out_of_range("Station with the given ID not found");
+        throw std::out_of_range("Station with the given ID not found: " + id);
     }
     return it->second;
 }
 
 int Graph::getStationIdByName(const std::string& name) const
 {
+    std::cout << name << std::endl;
     for (const auto& [id, station] : _map) {
         if (station.name == name) {
             return id;
         }
     }
     throw std::runtime_error("Station not found " + name);
+}
+
+bool Graph::hasStation(const int id) const
+{
+    return _map.count(id) > 0;
+}
+
+size_t Graph::getStationCount() const
+{
+    return this->_map.size();
 }
 
 Graph::Station& Graph::getStationRefById(int id) {

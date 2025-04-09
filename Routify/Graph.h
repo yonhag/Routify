@@ -39,6 +39,9 @@ public:
             : name(name), latitude(latitude), longitude(longitude) {
         }
 
+        Station() : name(""), latitude(0.0), longitude(0.0) {}
+
+
         bool operator==(const Station& other) const {
             return this->name == other.name;
         }
@@ -65,6 +68,10 @@ public:
     const Station& getStationById(int id) const;
 
     int getStationIdByName(const std::string& name) const;
+
+    bool hasStation(const int id) const;
+
+    size_t getStationCount() const;
 
 private:
     void fetchAPIData();

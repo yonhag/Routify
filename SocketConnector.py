@@ -12,9 +12,9 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         'type': 2,
         'stationId': 39105,
         'startStationId': 39105, # Gur Shazar
-        'destStationId': 21472,  # Begin Azrieli
-        'gen': 1000,
-        'mut': 0.7
+        'destStationId': 20269,  # Begin Azrieli
+        'gen': 100,
+        'mut': 0.5
     }
 
     s.sendall(json.dumps(request).encode())

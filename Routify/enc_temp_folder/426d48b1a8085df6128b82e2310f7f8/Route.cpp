@@ -161,29 +161,29 @@ bool Route::isValid(int startId, int destinationId, const Graph& graph) const {
             continue;
         }
 
-        bool line_found_at_source = false;
-        try {
-            const auto& lines_from_prev = graph.getLinesFrom(prev_station_code);
-            for (const auto& available_line : lines_from_prev) {
-                // Compare line ID and destination code for a match
-                if (available_line.id == line_taken.id && available_line.to == line_taken.to) {
-                    line_found_at_source = true;
-                    break;
-                }
-            }
-        }
-        catch (const std::out_of_range&) {
-            // This means prev_station_code wasn't found by getLinesFrom, but it should exist based on earlier checks. Graph inconsistency?
-            // std::cerr << "Validation failed: Could not get lines from previous station code: " << prev_station_code << std::endl;
-            return false;
-        }
+        //bool line_found_at_source = false;
+        //try {
+        //    const auto& lines_from_prev = graph.getLinesFrom(prev_station_code);
+        //    for (const auto& available_line : lines_from_prev) {
+        //        // Compare line ID and destination code for a match
+        //        if (available_line.id == line_taken.id && available_line.to == line_taken.to) {
+        //            line_found_at_source = true;
+        //            break;
+        //        }
+        //    }
+        //}
+        //catch (const std::out_of_range&) {
+        //    // This means prev_station_code wasn't found by getLinesFrom, but it should exist based on earlier checks. Graph inconsistency?
+        //    // std::cerr << "Validation failed: Could not get lines from previous station code: " << prev_station_code << std::endl;
+        //    return false;
+        //}
 
 
-        if (!line_found_at_source) {
-            // std::cerr << "Validation failed: Line " << line_taken.id << " to " << line_taken.to
-            //          << " not found originating from station " << prev_station_obj.name << " (code " << prev_station_code << ")" << std::endl;
-            return false;
-        }
+        //if (!line_found_at_source) {
+        //    // std::cerr << "Validation failed: Line " << line_taken.id << " to " << line_taken.to
+        //    //          << " not found originating from station " << prev_station_obj.name << " (code " << prev_station_code << ")" << std::endl;
+        //    return false;
+        //}
     } // End transition check loop
 
     // If all checks passed
