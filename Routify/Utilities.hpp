@@ -1,22 +1,62 @@
+#pragma once
 #define _USE_MATH_DEFINES // For M_PI
-#include <cmath>
+#include <cmath> // For trig functions, sqrt, etc. used in Haversine
+#include <string> // Keep other utilities if needed
 
 // Define M_PI if not available
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
 
-class Utilities {
-public:
-    static double calculateHaversineDistance(double lat1, double lon1, double lat2, double lon2) {
+namespace Utilities {
+
+    // --- Coordinates Struct ---
+    struct Coordinates {
+        double latitude = 0.0;
+        double longitude = 0.0;
+
+        // Default constructor
+        Coordinates() = default;
+
+        // Constructor with values
+        Coordinates(double lat, double lon) : latitude(lat), longitude(lon) {}
+
+        // Optional: Basic validity check
+        bool isValid() const {
+            return latitude >= -90.0 && latitude <= 90.0 &&
+                longitude >= -180.0 && longitude <= 180.0;
+        }
+
+        // Optional: Equality operator
+        bool operator==(const Coordinates& other) const {
+            // Consider using an epsilon comparison for floating-point numbers
+            // For simplicity here, we'll use direct comparison.
+            return latitude == other.latitude && longitude == other.longitude;
+        }
+        bool operator!=(const Coordinates& other) const {
+            return !(*this == other);
+        }
+    };
+    // --- End Coordinates Struct ---
+
+    // --- Haversine Function ---
+    inline double calculateHaversineDistance(const Coordinates& coord1, const Coordinates& coord2) {
         const double R = 6371.0; // Earth radius in kilometers
-        if (std::fabs(lat1 - lat2) < 1e-9 && std::fabs(lon1 - lon2) < 1e-9) { return 0.0; }
-        double dLat = (lat2 - lat1) * M_PI / 180.0;
-        double dLon = (lon2 - lon1) * M_PI / 180.0;
-        lat1 = lat1 * M_PI / 180.0; lat2 = lat2 * M_PI / 180.0;
-        double a = sin(dLat / 2) * sin(dLat / 2) + cos(lat1) * cos(lat2) * sin(dLon / 2) * sin(dLon / 2);
-        if (a < 0.0) a = 0.0; if (a > 1.0) a = 1.0; // Clamp 'a' to [0, 1] range
-        double c = 2 * atan2(sqrt(a), sqrt(1.0 - a));
-        return R * c;
+
+        double lat1Rad = coord1.latitude * M_PI / 180.0;
+        double lon1Rad = coord1.longitude * M_PI / 180.0;
+        double lat2Rad = coord2.latitude * M_PI / 180.0;
+        double lon2Rad = coord2.longitude * M_PI / 180.0;
+
+        double dLat = lat2Rad - lat1Rad;
+        double dLon = lon2Rad - lon1Rad;
+
+        double a = sin(dLat / 2.0) * sin(dLat / 2.0) +
+            cos(lat1Rad) * cos(lat2Rad) *
+            sin(dLon / 2.0) * sin(dLon / 2.0);
+        double c = 2.0 * atan2(sqrt(a), sqrt(1.0 - a));
+
+        return R * c; // Distance in kilometers
     }
-};
+
+} // namespace Utilities

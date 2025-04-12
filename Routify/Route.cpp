@@ -246,14 +246,17 @@ bool Route::generatePathSegment(int segmentStartId, int segmentEndId, const Grap
     try {
         if (!graph.hasStation(segmentStartId) || !graph.hasStation(segmentEndId)) return false;
         const Graph::Station& destStation = graph.getStationById(segmentEndId);
-        double destLat = destStation.latitude; double destLon = destStation.longitude;
+        double destLat = destStation.coordinates.latitude; double destLon = destStation.coordinates.longitude;
         visitedCodesSegment.insert(currentCode);
 
         while (currentCode != segmentEndId && steps < maxSteps) {
             if (!graph.hasStation(currentCode)) return false;
             const Graph::Station& currentStation = graph.getStationById(currentCode);
-
-            double distanceToSegmentEnd = Utilities::calculateHaversineDistance(currentStation.latitude, currentStation.longitude, destLat, destLon);
+			double curLat = currentStation.coordinates.latitude; double curLon = currentStation.coordinates.longitude;
+            double distanceToSegmentEnd = Utilities::calculateHaversineDistance(
+                Utilities::Coordinates(curLat, curLon),
+                Utilities::Coordinates(destLat, destLon)
+            );
             const double MAX_WALKING_DISTANCE_SEGMENT = 0.5;
             if (distanceToSegmentEnd < MAX_WALKING_DISTANCE_SEGMENT) {
                 Graph::TransportationLine walkingEdge("Walk", segmentEndId, (distanceToSegmentEnd / 5.0) * 60.0, 0, Graph::TransportMethod::Walk);
@@ -272,7 +275,11 @@ bool Route::generatePathSegment(int segmentStartId, int segmentEndId, const Grap
                 int nextCode = line.to;
                 if (graph.hasStation(nextCode) && visitedCodesSegment.find(nextCode) == visitedCodesSegment.end()) {
                     const Graph::Station& nextStation = graph.getStationById(nextCode);
-                    double distToDest = Utilities::calculateHaversineDistance(nextStation.latitude, nextStation.longitude, destLat, destLon);
+					double nextLat = nextStation.coordinates.latitude; double nextLon = nextStation.coordinates.longitude;
+                    double distToDest = Utilities::calculateHaversineDistance(
+                        Utilities::Coordinates(nextLat, nextLon),
+                        Utilities::Coordinates(destLat, destLon)
+                    );
                     weights.push_back(distToDest + epsilon); validLines.push_back(&line);
                 }
             }
@@ -372,10 +379,13 @@ void Route::mutate(double mutationRate, std::mt19937& gen, int startId, int dest
         // Need code for the end station of the segment to create the walk line
         int segment_end_code = segment_end_vs.line.to; // The 'to' code of the line that reached the segment end station
 
+		auto before_station_coords = before_segment_vs.station.coordinates;
+		auto end_station_coords = segment_end_vs.station.coordinates;
+
         // Calculate direct walking distance
         double walk_dist = Utilities::calculateHaversineDistance(
-            before_segment_vs.station.latitude, before_segment_vs.station.longitude,
-            segment_end_vs.station.latitude, segment_end_vs.station.longitude
+            Utilities::Coordinates(before_station_coords.latitude, before_station_coords.longitude),
+            Utilities::Coordinates(end_station_coords.latitude, end_station_coords.longitude)
         );
 
         if (walk_dist < MAX_WALK_REPLACE_DISTANCE) {

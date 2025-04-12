@@ -1,5 +1,4 @@
 #include "Graph.h"
-#include "Utilities.hpp"
 #include <stdexcept>
 #include <iostream>
 #include <sstream>
@@ -48,8 +47,13 @@ Graph::Graph() {
 Graph::~Graph() {
 }
 
-void Graph::addStation(const int code, const std::string& name, double latitude, double longitude) {
-    this->_map.emplace(code, Station(name, latitude, longitude));
+void Graph::addStation(int code, const std::string& name, const Utilities::Coordinates& coords) {
+    if (!coords.isValid()) {
+		std::cout << "Invalid coords for " << code << ": " << coords.latitude << " " << coords.longitude << std::endl;
+    }
+
+    // Use the Station constructor that takes Coordinates
+    this->_map.emplace(code, Station(name, coords));
 }
 
 int Graph::calculateWeight(double travelTime, double price) const {
@@ -93,15 +97,22 @@ size_t Graph::getStationCount() const
     return this->_map.size();
 }
 
-std::vector<std::pair<int, Graph::Station>> Graph::getNearbyStations(double latitude, double longitude) const
-{
-	std::vector<std::pair<int, Station>> nearbyStations;
-	for (const auto& [id, station] : _map) {
-		double distance = Utilities::calculateHaversineDistance(station.latitude, station.longitude, latitude, longitude);
-		if (distance <= this->maxNearbyDistance) {
+std::vector<std::pair<int, Graph::Station>> Graph::getNearbyStations(const Utilities::Coordinates& userCoords) const {
+    std::vector<std::pair<int, Station>> nearbyStations;
+    for (const auto& [id, station] : _map) {
+        // Use the updated Haversine function and the coordinates struct from Station
+        double distance = Utilities::calculateHaversineDistance(station.coordinates, userCoords);
+        if (distance <= this->maxNearbyDistance) {
             nearbyStations.push_back({ id, station });
-		}
-	}
+        }
+    }
+    // Optional: Sort nearbyStations by distance
+    std::sort(nearbyStations.begin(), nearbyStations.end(),
+        [&userCoords](const auto& a, const auto& b) {
+            double distA = Utilities::calculateHaversineDistance(a.second.coordinates, userCoords);
+            double distB = Utilities::calculateHaversineDistance(b.second.coordinates, userCoords);
+            return distA < distB;
+        });
     return nearbyStations;
 }
 
@@ -137,7 +148,7 @@ void Graph::fetchGTFSStops() {
         std::string stop_name = tokens[2];
         double stop_lat = std::stod(tokens[4]);
         double stop_lon = std::stod(tokens[5]);
-        addStation(stop_code, stop_name, stop_lat, stop_lon);
+        addStation(stop_code, stop_name, Utilities::Coordinates(stop_lat, stop_lon));
         if (i % 10000 == 0)
             std::cout << "Added " << i << " stations out of 34.5K" << std::endl;
         i++;

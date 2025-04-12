@@ -53,7 +53,6 @@ private:
     // --- Private Helper Methods ---
     json handleGetLines(const json& request_json);
     json handleGetStationInfo(const json& request_json);
-    json handleNearbyStations(const json& request_json);
 
     // Refactored handlers for Type 2
     json handleFindRouteCoordinates(const json& request_json); // Top level

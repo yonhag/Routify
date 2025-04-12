@@ -1,4 +1,5 @@
 #pragma once
+#include "Utilities.hpp"
 #include <string>
 #include <vector>
 #include <unordered_map>
@@ -31,19 +32,18 @@ public:
     // Represents a node (station) in the graph.
     struct Station {
         std::string name;
-        double latitude;
-        double longitude;
+        Utilities::Coordinates coordinates;
         std::vector<TransportationLine> lines;
 
-        Station(const std::string& name, double latitude, double longitude)
-            : name(name), latitude(latitude), longitude(longitude) {
+        Station(const std::string& name, const Utilities::Coordinates& coords)
+            : name(name), coordinates(coords) {
         }
 
-        Station() : name(""), latitude(0.0), longitude(0.0) {}
+        Station() : name(""), coordinates() {}
 
 
         bool operator==(const Station& other) const {
-            return this->name == other.name;
+            return this->name == other.name && this->coordinates == other.coordinates;
         }
     };
 
@@ -57,7 +57,7 @@ public:
     ~Graph();
 
     // Adds a station to the graph.
-    void addStation(const int code, const std::string& name, double latitude, double longitude);
+    void addStation(const int code, const std::string& name, const Utilities::Coordinates& coords);
 
     // Computes the weight for an edge.
     int calculateWeight(double travelTime, double price) const;
@@ -73,7 +73,7 @@ public:
 
     size_t getStationCount() const;
 
-    std::vector<std::pair<int, Graph::Station>> getNearbyStations(double latitude, double longitude) const;
+    std::vector<std::pair<int, Graph::Station>> getNearbyStations(const Utilities::Coordinates& userCoords) const;
 
 private:
     void fetchAPIData();
@@ -82,7 +82,7 @@ private:
 
     Station& getStationRefById(int id);
 
-	const double maxNearbyDistance = 5.0; // km
+	const double maxNearbyDistance = 0.6; // km
 
     std::unordered_map<int, Station> _map;
 };

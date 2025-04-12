@@ -20,8 +20,8 @@ using json = nlohmann::json;
 static void to_json(json& j, const Graph::Station& p) {
     j = json{
         {"name", p.name},
-        {"latitude", p.latitude},
-        {"longitude", p.longitude}
+        {"latitude", p.coordinates.latitude},
+        {"longitude", p.coordinates.longitude}
     };
 }
 
@@ -51,7 +51,6 @@ void RequestHandler::handleRequest(Socket clientSocket)
         case 0: response_json = handleGetLines(request_json); break;
         case 1: response_json = handleGetStationInfo(request_json); break;
         case 2: response_json = handleFindRouteCoordinates(request_json); break; // Calls the refactored top-level handler
-        case 3: response_json = handleNearbyStations(request_json); break;
         default: response_json = { {"error", "Invalid request type"} }; break;
         }
         response_str = response_json.dump(2);
@@ -128,23 +127,6 @@ json RequestHandler::handleGetStationInfo(const json& request_json) {
     json stationJson = st; // Uses the to_json overload for Graph::Station
     stationJson["code"] = stationId; // Add the code to the response
     return stationJson;
-}
-
-json RequestHandler::handleNearbyStations(const json& request_json)
-{
-    json response;
-    // Initialize "stations" as an empty JSON array.
-    response["stations"] = json::array();
-
-    // Retrieve nearby stations from the graph.
-    auto stations = this->_graph.getNearbyStations(double(request_json["lat"]), double(request_json["long"]));
-
-    // Loop through each station and append it to the "stations" JSON array.
-    for (const auto& station : stations) {
-        response["stations"][station.first] = station.second;
-    }
-
-    return response;
 }
 
 
@@ -230,13 +212,13 @@ json RequestHandler::extractAndValidateCoordinateInput(const json& request_json,
 // Helper 2: Find Nearby Stations
 json RequestHandler::findNearbyStationsForRoute(const CoordinateRouteInput& inputData, NearbyStations& foundStations) {
     std::cout << "Finding nearby stations for start: " << inputData.startLat << "," << inputData.startLong << std::endl;
-    foundStations.startStations = _graph.getNearbyStations(inputData.startLat, inputData.startLong);
+    foundStations.startStations = _graph.getNearbyStations(Utilities::Coordinates(inputData.startLat, inputData.startLong));
     if (foundStations.startStations.empty()) {
         return { {"error", "No stations found near start coordinates"} };
     }
 
     std::cout << "Finding nearby stations for end: " << inputData.endLat << "," << inputData.endLong << std::endl;
-    foundStations.endStations = _graph.getNearbyStations(inputData.endLat, inputData.endLong);
+    foundStations.endStations = _graph.getNearbyStations(Utilities::Coordinates(inputData.endLat, inputData.endLong));
     if (foundStations.endStations.empty()) {
         return { {"error", "No stations found near end coordinates"} };
     }
@@ -466,15 +448,15 @@ json RequestHandler::formatRouteResponse(const BestRouteResult& bestResult) {
             const Graph::Station& fromStation = _graph.getStationById(segmentStartCode); // Get station object
             stepJson["from_name"] = fromStation.name;
             stepJson["from_code"] = segmentStartCode;
-            stepJson["from_lat"] = fromStation.latitude;
-            stepJson["from_long"] = fromStation.longitude;
+            stepJson["from_lat"] = fromStation.coordinates.latitude;
+            stepJson["from_long"] = fromStation.coordinates.longitude;
 
             // --- Action Point Info (Arrival) ---
             const Graph::Station& toStation = _graph.getStationById(segmentEndCode); // Get station object
             stepJson["to_name"] = toStation.name;
             stepJson["to_code"] = segmentEndCode;
-            stepJson["to_lat"] = toStation.latitude;
-            stepJson["to_long"] = toStation.longitude;
+            stepJson["to_lat"] = toStation.coordinates.latitude;
+            stepJson["to_long"] = toStation.coordinates.longitude;
 
             // --- Reconstruct and Add Intermediate Stops ---
             bool isPublic = lineTaken.id != "Walk" && lineTaken.id != "Start"; // Check if public transport
@@ -491,8 +473,8 @@ json RequestHandler::formatRouteResponse(const BestRouteResult& bestResult) {
                     intermediateStopsJson.push_back({
                         {"code", _graph.getStationIdByName(interStation.name)}, // Need a way to get ID back - might need graph changes or store ID in Station
                         {"name", interStation.name},
-                        {"lat", interStation.latitude},
-                        {"long", interStation.longitude}
+                        {"lat", interStation.coordinates.latitude},
+                        {"long", interStation.coordinates.longitude}
                         });
                 }
             }
@@ -550,9 +532,10 @@ std::optional<RequestHandler::StationPair> RequestHandler::selectClosestStation(
     bool found = false;
 
     for (const auto& stationPair : allNearby) {
+		auto nearbyStationCoords = stationPair.second.coordinates;
         double dist = Utilities::calculateHaversineDistance(
-            centerLat, centerLon,
-            stationPair.second.latitude, stationPair.second.longitude);
+            Utilities::Coordinates(centerLat, centerLon),
+            Utilities::Coordinates(nearbyStationCoords.latitude, nearbyStationCoords.longitude));
         if (dist < minDistance) {
             minDistance = dist;
             closestStationPair = stationPair;
@@ -584,9 +567,10 @@ void RequestHandler::selectRepresentativeStations(
     std::vector<std::pair<double, StationPair>> stationsWithDistance;
     stationsWithDistance.reserve(allNearby.size());
     for (const auto& stationPair : allNearby) {
+		auto nearbyStationCoords = stationPair.second.coordinates;
         double dist = Utilities::calculateHaversineDistance(
-            centerLat, centerLon,
-            stationPair.second.latitude, stationPair.second.longitude);
+            Utilities::Coordinates(centerLat, centerLon),
+            Utilities::Coordinates(nearbyStationCoords.latitude, nearbyStationCoords.longitude));
         stationsWithDistance.push_back({ dist, stationPair });
     }
 
@@ -659,10 +643,13 @@ void RequestHandler::selectRepresentativeStations(
             continue; // Skip already selected stations
         }
 
+		auto closestStationCoords = closestStationPair.second.coordinates;
+		auto candidateSkCoords = candidate_Sk_pair.second.coordinates;
+
         // Calculate distance between this candidate (Si) and the closest station (S1)
         double dist_S1_Si = Utilities::calculateHaversineDistance(
-            closestStationPair.second.latitude, closestStationPair.second.longitude,
-            candidate_Sk_pair.second.latitude, candidate_Sk_pair.second.longitude
+            Utilities::Coordinates(closestStationCoords.latitude, closestStationCoords.longitude),
+            Utilities::Coordinates(candidateSkCoords.latitude, candidateSkCoords.longitude)
         );
 
         if (dist_S1_Si > max_dist_from_S1) {
