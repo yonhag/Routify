@@ -75,6 +75,11 @@ public:
 
     std::vector<std::pair<int, Graph::Station>> getNearbyStations(const Utilities::Coordinates& userCoords) const;
 
+    std::vector<Graph::Station> getStationsAlongLineSegment( // Changed return type
+        const std::string& lineId,
+        int segmentStartStationId,
+        int segmentEndStationId) const;
+
 private:
     void fetchAPIData();
     void fetchGTFSStops();                   // Parses stops.txt to extract station code, name, and coordinates.

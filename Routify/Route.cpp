@@ -40,14 +40,96 @@ double Route::getTotalTime() const {
     return totalTime;
 }
 
-// Calculate total cost from line segments
-double Route::getTotalCost() const {
-    if (_stations.size() < 2) return 0.0;
-    double totalCost = 0.0;
-    for (size_t i = 1; i < this->_stations.size(); ++i) {
-        totalCost += this->_stations[i].line.price;
+/*
+* Calculates an estimated cost for the route.
+* Uses aerial distnace between first and last station on the line, so it isnt accurate,
+* but provides a good enough approximation for this algorithm.
+*/
+double Route::getTotalCost(const Graph& graph) const {
+    if (_stations.empty()) {
+        return 0.0;
     }
-    return totalCost;
+
+    double totalPublicTransportAerialDistance = 0.0;
+    bool usedPublicTransport = false;
+
+    // To get the ID of the first station reliably:
+    int firstStationId = -1;
+    if (!_stations.empty()) {
+        // We NEED the ID associated with _stations[0].station object.
+        // This still requires a lookup if Station doesn't store its ID.
+        try {
+            // Assuming getStationIdByName is available, but potentially slow.
+            firstStationId = graph.getStationIdByName(_stations[0].station.name);
+            // If you implement Graph::getStationIdFromStationObject(const Station&), use that.
+            // If Station struct stores its ID: firstStationId = _stations[0].station.id;
+        }
+        catch (const std::runtime_error& e) {
+            std::cerr << "Critical Error [getTotalCost]: Failed to get ID for the first station '"
+                << _stations[0].station.name << "'. Cannot calculate cost accurately. " << e.what() << std::endl;
+            return 0.0; // Or some error value
+        }
+    }
+    if (firstStationId == -1) {
+        std::cerr << "Critical Error [getTotalCost]: Could not determine ID for the first station." << std::endl;
+        return 0.0; // Cannot proceed without first station ID
+    }
+
+
+    // Iterate through the route segments defined by VisitedStation entries
+    for (size_t i = 1; i < _stations.size(); ++i) {
+        const auto& currentVs = _stations[i];
+        const auto& lineTaken = currentVs.line;
+
+        if (isPublicTransport(lineTaken.type)) {
+            usedPublicTransport = true;
+
+            // Determine the start and end station IDs for this segment
+            int segmentStartId = currentVs.prevStationCode;
+            int segmentEndId = lineTaken.to;
+
+            if (segmentStartId == -1 && i == 1) {
+                segmentStartId = firstStationId; // Use the ID we looked up earlier
+            }
+            else if (segmentStartId == -1) {
+                std::cerr << "Warning [getTotalCost]: Invalid prevStationCode (-1) for non-first segment." << std::endl;
+                continue;
+            }
+
+            if (segmentStartId != segmentEndId) {
+                // --- Call the new Graph method ---
+                std::vector<Graph::Station> segmentStations = graph.getStationsAlongLineSegment(
+                    lineTaken.id,
+                    segmentStartId,
+                    segmentEndId);
+
+                // Calculate distance using the returned Station objects
+                if (segmentStations.size() >= 2) {
+                    for (size_t j = 0; j < segmentStations.size() - 1; ++j) {
+                        // Access coordinates directly from the Station objects
+                        totalPublicTransportAerialDistance += Utilities::calculateHaversineDistance(
+                            segmentStations[j].coordinates,
+                            segmentStations[j + 1].coordinates);
+                    }
+                }
+                else {
+                    // Handle empty or single-station path result from getStationsAlongLineSegment
+                    if (segmentStations.empty()) {
+                        std::cerr << "Warning [getTotalCost]: getStationsAlongLineSegment returned empty path..." << std::endl;
+                    }
+                }
+            }
+        } // end if isPublicTransport
+    } // end for loop
+
+    // --- Fare Calculation (remains the same) ---
+    if (!usedPublicTransport) { return 0.0; }
+    // Apply fare rules...
+    if (totalPublicTransportAerialDistance <= 15.0) return 6.0;
+    else if (totalPublicTransportAerialDistance <= 40.0) return 12.5;
+    else if (totalPublicTransportAerialDistance <= 120.0) return 17.0;
+    else if (totalPublicTransportAerialDistance <= 225.0) return 28.5;
+    else return 84.24;
 }
 
 // Calculate number of transfers (line changes)
@@ -204,7 +286,7 @@ double Route::getFitness(int startId, int destinationId, const Graph& graph,
 
     // --- Existing Station-to-Station Calculations ---
     double totalStationToStationTime = getTotalTime(); // Time ONLY between stations
-    double totalCost = getTotalCost();
+    double totalCost = getTotalCost(graph);
     int transfers = getTransferCount(); // Calculated as boardings - 1
 
     // --- Define weights/penalties (Crucial Step - High Walk Penalty) ---

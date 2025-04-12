@@ -391,7 +391,7 @@ json RequestHandler::formatRouteResponse(const BestRouteResult& bestResult) {
     resultJson["summary"] = {
         {"fitness", bestResult.fitness},
         {"time_mins", bestResult.route.getTotalTime()},
-        {"cost", bestResult.route.getTotalCost()},
+        {"cost", bestResult.route.getTotalCost(this->_graph)},
         // Make sure getTransferCount() is updated as per previous discussion
         {"transfers", bestResult.route.getTransferCount()}
     };

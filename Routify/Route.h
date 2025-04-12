@@ -36,7 +36,7 @@ public:
 
     void addVisitedStation(const VisitedStation& vs);
     double getTotalTime() const;
-    double getTotalCost() const;
+    double getTotalCost(const Graph& graph) const;
     int getTransferCount() const;
     const std::vector<VisitedStation> getVisitedStations() const;
 

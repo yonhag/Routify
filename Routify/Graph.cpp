@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cctype>
 #include <locale>
+#include <unordered_set>
 
 static std::string trim(const std::string& s) {
     auto start = s.begin();
@@ -114,6 +115,102 @@ std::vector<std::pair<int, Graph::Station>> Graph::getNearbyStations(const Utili
             return distA < distB;
         });
     return nearbyStations;
+}
+
+std::vector<Graph::Station> Graph::getStationsAlongLineSegment( // Changed return type
+    const std::string& lineId,
+    int segmentStartStationId,
+    int segmentEndStationId) const
+{
+    std::vector<Graph::Station> pathStations; // Store Station objects
+    std::unordered_set<int> visitedOnPathIds; // Still track IDs to detect cycles
+
+    // 1. Basic Validation & Get Start Station Object
+    const Station* startStationPtr = nullptr;
+    const Station* endStationPtr = nullptr; // Not strictly needed for trace, but good practice
+    try {
+        startStationPtr = &getStationById(segmentStartStationId);
+        endStationPtr = &getStationById(segmentEndStationId); // Verify end exists too
+    }
+    catch (const std::out_of_range& oor) {
+        std::cerr << "Warning [getStationsAlongLineSegment]: Start (" << segmentStartStationId
+            << ") or End (" << segmentEndStationId << ") station ID not found. " << oor.what() << std::endl;
+        return pathStations; // Return empty vector
+    }
+
+    if (segmentStartStationId == segmentEndStationId) {
+        pathStations.push_back(*startStationPtr); // Add the single station object
+        return pathStations;
+    }
+
+    int currentStationId = segmentStartStationId;
+    pathStations.push_back(*startStationPtr); // Add start station object
+    visitedOnPathIds.insert(currentStationId);
+
+    const int MAX_STEPS = 150;
+    int stepCount = 0;
+
+    // 2. Trace the path
+    while (currentStationId != segmentEndStationId && stepCount < MAX_STEPS) {
+        stepCount++;
+        bool foundNextHop = false;
+        const TransportationLine* nextHopLine = nullptr; // To store the chosen line
+
+        try {
+            const std::vector<TransportationLine>& linesFromCurrent = getLinesFrom(currentStationId);
+
+            // Find the next hop (same logic as before, finding the line)
+            for (const auto& line : linesFromCurrent) {
+                if (line.id == lineId) {
+                    nextHopLine = &line;
+                    break;
+                }
+            }
+
+            if (nextHopLine != nullptr) {
+                int nextStationId = nextHopLine->to;
+
+                // Cycle detection using IDs
+                if (visitedOnPathIds.count(nextStationId)) {
+                    std::cerr << "Warning [getStationsAlongLineSegment]: Cycle detected..." << std::endl;
+                    pathStations.clear(); return pathStations;
+                }
+
+                // Get the next Station object
+                const Station& nextStation = getStationById(nextStationId); // Can throw std::out_of_range
+
+                // Add the *next* station object to the path
+                pathStations.push_back(nextStation);
+                visitedOnPathIds.insert(nextStationId);
+                currentStationId = nextStationId; // Update the current ID for the next loop iteration
+                foundNextHop = true;
+
+            }
+            else {
+                std::cerr << "Warning [getStationsAlongLineSegment]: No outgoing edge found..." << std::endl;
+                pathStations.clear(); return pathStations;
+            }
+
+        }
+        catch (const std::out_of_range& oor_err) {
+            std::cerr << "Error [getStationsAlongLineSegment]: Station lookup failed for ID "
+                << (nextHopLine ? nextHopLine->to : currentStationId) // ID that failed
+                << ". " << oor_err.what() << std::endl;
+            pathStations.clear(); return pathStations;
+        }
+        catch (const std::exception& e) {
+            std::cerr << "Error [getStationsAlongLineSegment]: Exception during trace: " << e.what() << std::endl;
+            pathStations.clear(); return pathStations;
+        }
+        // No need for explicit !foundNextHop check here as the inner logic handles it
+    } // End while loop
+
+    // 3. Final Checks (same as before)
+    if (stepCount >= MAX_STEPS) { /* ... warning, clear, return ... */ }
+    if (currentStationId != segmentEndStationId) { /* ... warning, clear, return ... */ }
+
+    // 4. Success
+    return pathStations; // Return vector of Station objects
 }
 
 Graph::Station& Graph::getStationRefById(int id) {
