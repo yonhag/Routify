@@ -67,109 +67,125 @@ class MarkerManager {
      */
     addRouteDisplayFromSteps(steps, userLocation, destinationCoords) {
         const map = this.mapManager.getMapInstance();
-        if (!map) { /* ... error handling ... */ return; }
+        if (!map || !this.routeLayer || !this.actionPointMarkers) {
+            console.error("Cannot display route: Map or required layer groups not available.");
+            return;
+        }
         if (!steps || steps.length === 0) { /* ... error handling ... */ return; }
-        if (!userLocation) { console.error("User location missing for drawing initial walk."); return; }
-        if (!destinationCoords) { console.error("Destination coords missing for drawing final walk."); return; }
+        if (!userLocation) { /* ... */ return; }
+        if (!destinationCoords) { /* ... */ return; }
 
+        this.clearRouteDisplay();
+        let allRoutePoints = [];
+        const walkStyle = { color: 'green', weight: 4, opacity: 0.7, dashArray: '8, 8' };
+        // --- Define styles for markers ---
+        const actionMarkerOptions = { // For start/end/transfer points (Orange Markers)
+             // Use default Leaflet icon or define your own L.icon here
+             title: "Action Point" // Default title
+        };
+        const intermediateStopOptions = { // For pass-through stops (Smaller Circles)
+            radius: 3, // Smaller radius
+            color: '#555', // Dark grey outline
+            weight: 1,
+            fillColor: '#888', // Lighter grey fill
+            fillOpacity: 0.7,
+            title: "Intermediate Stop" // Default title
+        };
+        // --- End marker styles ---
 
-        this.clearRouteDisplay(); // Clear previous route
-
-        let allRoutePoints = []; // For bounds fitting
-        const walkStyle = { color: 'green', weight: 4, opacity: 0.7, dashArray: '8, 8' }; // Distinct walk style
 
         // --- 1. Draw Initial Walk Line ---
+        // ... (no changes needed here) ...
         const firstStationCoords = [steps[0].from_lat, steps[0].from_long];
         const userCoords = [userLocation.lat, userLocation.lng];
-        if (userCoords[0] !== firstStationCoords[0] || userCoords[1] !== firstStationCoords[1]) { // Avoid zero-length line
+         if (userCoords[0] !== firstStationCoords[0] || userCoords[1] !== firstStationCoords[1]) {
              const initialWalkPolyline = L.polyline([userCoords, firstStationCoords], walkStyle);
              this.routeLayer.addLayer(initialWalkPolyline);
              allRoutePoints.push(userCoords, firstStationCoords);
-             console.log("Drawing initial walk line.");
-        } else {
-            allRoutePoints.push(userCoords); // Still add user location for bounds
-        }
-
+         } else { allRoutePoints.push(userCoords); }
 
         // --- 2. Draw Transit/Intermediate Walk Segments (Loop) ---
         steps.forEach(step => {
             const fromCoords = [step.from_lat, step.from_long];
             const toCoords = [step.to_lat, step.to_long];
             let segmentPoints = [fromCoords];
+            let intermediateMarkers = []; // Store intermediate markers for this segment
 
+            // --- Process Intermediate Stops ---
             if (step.intermediate_stops && Array.isArray(step.intermediate_stops)) {
                 step.intermediate_stops.forEach(interStop => {
-                    segmentPoints.push([interStop.lat, interStop.long]);
+                    const interCoords = [interStop.lat, interStop.long];
+                    segmentPoints.push(interCoords);
+                    // Create a smaller circle marker for the intermediate stop
+                    const interMarker = L.circleMarker(interCoords, {
+                        ...intermediateStopOptions, // Spread the options object
+                        title: interStop.name || intermediateStopOptions.title // Use station name if available
+                    });
+                    interMarker.bindPopup(`Pass through: ${interStop.name || 'Intermediate Stop'}`);
+                    intermediateMarkers.push(interMarker); // Add to list
                 });
             }
+            // --- End Intermediate Stops ---
+
             segmentPoints.push(toCoords);
-            // Add points from this segment (excluding first point if it was added by previous segment's end)
             allRoutePoints.push(...segmentPoints.slice(1));
 
-
-            // Determine line style
+            // Determine line style (no change)
             let style;
-            if (step.line_id === 'Walk') {
-                style = walkStyle;
-            } else if (step.line_id === 'Start') {
-                style = { color: 'transparent' }; // Don't draw "Start" line
-            } else {
-                 // Basic example: Blue for public transport
-                style = { color: 'blue', weight: 5, opacity: 0.8 };
-                 // Add more specific colors based on line_id or type if needed
-            }
+             if (step.line_id === 'Walk') { style = walkStyle; }
+             else if (step.line_id === 'Start') { style = { color: 'transparent' }; }
+             else { style = { color: 'blue', weight: 5, opacity: 0.8 }; }
 
-            if (step.line_id !== 'Start') { // Avoid drawing for the conceptual 'Start' segment if present
+            // Draw polyline (no change)
+            if (step.line_id !== 'Start') {
                 const polyline = L.polyline(segmentPoints, style);
                 this.routeLayer.addLayer(polyline);
             }
 
+            // --- Add Markers (Action Points and Intermediate) ---
+            // Add intermediate markers for this segment
+            intermediateMarkers.forEach(mkr => this.actionPointMarkers.addLayer(mkr));
 
-            // Add markers for action points (Orange markers)
-            let actionDesc = step.action_description || 'Waypoint'; // Default text
+            // Add markers for action points (Orange/Default Markers)
+            let actionDesc = step.action_description || 'Waypoint';
             if (step.from_is_action_point) {
-                 // If it's the very first step's "from", it's the effective Start Station
                 const markerTitle = (step.segment_index === 0) ? `Start Station: ${step.from_name}` : step.from_name;
                 const markerPopup = (step.segment_index === 0) ? `<b>Start Station</b><br>${step.from_name}` : `<b>${actionDesc}</b><br>${step.from_name}`;
-                const marker = L.marker(fromCoords, { title: markerTitle }).bindPopup(markerPopup);
+                // Use actionMarkerOptions (could be default or custom L.icon)
+                const marker = L.marker(fromCoords, { ...actionMarkerOptions, title: markerTitle }).bindPopup(markerPopup);
                 this.actionPointMarkers.addLayer(marker);
             }
-             // Check if 'to' is an action point AND it's the very last point of the whole route
-             const isFinalStation = (step.segment_index === steps.length - 1);
-             if (step.to_is_action_point) {
+            const isFinalStation = (step.segment_index === steps.length - 1);
+            if (step.to_is_action_point) {
                  const markerTitle = isFinalStation ? `End Station: ${step.to_name}` : step.to_name;
                  const markerPopup = isFinalStation ? `<b>End Station</b><br>${step.to_name}` : `<b>${actionDesc}</b><br>${step.to_name}`;
-                 const marker = L.marker(toCoords, { title: markerTitle }).bindPopup(markerPopup);
+                 // Use actionMarkerOptions
+                 const marker = L.marker(toCoords, { ...actionMarkerOptions, title: markerTitle }).bindPopup(markerPopup);
                  this.actionPointMarkers.addLayer(marker);
              }
+            // --- End Add Markers ---
 
         }); // End loop through steps
 
 
         // --- 3. Draw Final Walk Line ---
+        // ... (no changes needed here) ...
         const lastStationCoords = [steps[steps.length - 1].to_lat, steps[steps.length - 1].to_long];
         const destCoords = [destinationCoords.lat, destinationCoords.lng];
-        if (lastStationCoords[0] !== destCoords[0] || lastStationCoords[1] !== destCoords[1]) { // Avoid zero-length line
+         if (lastStationCoords[0] !== destCoords[0] || lastStationCoords[1] !== destCoords[1]) {
              const finalWalkPolyline = L.polyline([lastStationCoords, destCoords], walkStyle);
              this.routeLayer.addLayer(finalWalkPolyline);
-             allRoutePoints.push(destCoords); // Add destination for bounds fitting
-             console.log("Drawing final walk line.");
-        } else {
-             // If last station IS the destination, ensure it's in bounds calculation
+             allRoutePoints.push(destCoords);
+         } else {
              if (allRoutePoints.length === 0 || allRoutePoints[allRoutePoints.length-1][0] !== lastStationCoords[0] || allRoutePoints[allRoutePoints.length-1][1] !== lastStationCoords[1] ){
                   allRoutePoints.push(lastStationCoords);
              }
-        }
-
+         }
 
         // --- Fit Bounds ---
-        if (allRoutePoints.length > 0) {
-            try{
-                 map.flyToBounds(L.latLngBounds(allRoutePoints), { padding: [50, 50], maxZoom: 17 }); // Add padding & limit zoom
-            } catch (e) {
-                 console.error("Error fitting map bounds:", e, allRoutePoints);
-            }
-        }
+        // ... (no change) ...
+         if (allRoutePoints.length > 0) { map.flyToBounds(L.latLngBounds(allRoutePoints), { padding: [50, 50], maxZoom: 17 }); }
+
     } // End addRouteDisplayFromSteps
 
  // --- Definition of addDestinationMarker ---

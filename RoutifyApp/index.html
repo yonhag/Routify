@@ -4,21 +4,29 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Routify</title>
-
     <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
           integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
           crossorigin=""/>
-    <link rel="icon" href="/favicon.ico" type="image/x-icon">
-
-    <link rel="stylesheet" href="style.css"> <!-- Your custom styles -->
-
+    <!-- Your Custom CSS -->
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-    <h1>Routify</h1>
-    <h2 id="status-message"></h2>
-    <div id="map"></div> <!-- Map container -->
+    <!-- Header Section -->
+    <div class="header-container">
+        <h1>Routify</h1>
+        <!-- Use the h2 for the route info bar container, simplifies centering -->
+        <div id="route-info-bar" class="route-info-bar">
+            <div id="route-stats" class="route-stats"></div>
+            <div id="route-summary-text" class="route-summary-text"></div>
+        </div>
+         <!-- Status Message (if you want it separate) -->
+         <div id="status-message" class="status-message">Ready. Click map to set destination.</div>
+    </div>
+
+    <!-- Map Container -->
+    <div id="map"></div> <!-- Ensure this has CSS to give it height -->
 
     <!-- jQuery -->
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"

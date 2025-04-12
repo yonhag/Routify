@@ -8,7 +8,7 @@ import { updateStatusMessage } from './utils.js';
 export async function sendApiRequest(endpoint, payload) {
     // Use relative URL to target the same Flask server origin
     const url = endpoint;
-    console.log(`[ApiClient] Sending HTTP POST to Flask proxy ${url}:`, payload);
+    console.log(`[  Client] Sending HTTP POST to Flask proxy ${url}:`, payload);
 
     try {
         const response = await fetch(url, {

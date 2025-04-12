@@ -1,102 +1,112 @@
+/* style.css */
+
+/* Basic body reset */
 body {
-    font-family: sans-serif;
     margin: 0;
     padding: 0;
-    display: flex;
-    flex-direction: column;
-    height: 100vh; /* Make body take full viewport height */
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    display: flex; /* Use flexbox for overall layout */
+    flex-direction: column; /* Stack header and map vertically */
+    height: 100vh; /* Full viewport height */
+}
+
+/* Header Styling */
+.header-container {
+    text-align: center; /* Center H1 */
+    padding: 10px 0 5px 0; /* Padding top/bottom */
+    border-bottom: 1px solid #ccc;
+    background-color: #fff; /* Optional background */
+    flex-shrink: 0; /* Prevent header from shrinking */
 }
 
 h1 {
-    text-align: center;
-    margin: 10px 0;
-    flex-shrink: 0; /* Prevent shrinking */
+    margin: 0 0 10px 0; /* Adjust spacing around H1 */
+    font-size: 2em;
+    color: #333;
 }
 
-.controls {
-    text-align: center;
-    padding: 10px;
-    flex-shrink: 0;
-}
-
-.controls input[type="search"] {
-    padding: 8px 12px;
-    min-width: 250px; /* Adjust width as needed */
-    font-size: 1em;
-}
-
-#map {
-    flex-grow: 1;
-    width: 100%;
-    background-color: #eee;
-}
-
-/* --- Styling for Marker Hover Tooltip --- */
-.leaflet-tooltip {
-    background-color: white; /* White background */
-    border: 1px solid #ccc;  /* Optional: light grey border */
-    border-radius: 4px;     /* Rounded corners */
-    box-shadow: 0 1px 3px rgba(0,0,0,0.2); /* Optional: subtle shadow */
-    color: #333;            /* Dark text color */
-    padding: 6px 10px;      /* Padding inside the tooltip */
-    font-size: 0.9em;       /* Adjust font size if needed */
-    white-space: pre-wrap;  /* Allow line breaks (\n) in title */
-}
-
-.leaflet-tooltip-top:before,
-.leaflet-tooltip-bottom:before,
-.leaflet-tooltip-left:before,
-.leaflet-tooltip-right:before {
-    border: none;
-}
-
-
-#status-message {
-    text-align: center;
-    padding: 8px;
-    margin: 5px auto; /* Center horizontally if needed */
+/* Route Info Bar Styling */
+.route-info-bar {
+    display: none; /* Hidden by default, JS will change to 'flex' */
+    background-color: #f0f0f0;
+    padding: 8px 15px;
+    margin: 0 auto 5px auto; /* Center the bar horizontally, add bottom margin */
+    border: 1px solid #ddd;
     border-radius: 4px;
-    display: none; /* Initially hidden */
-    max-width: 80%; /* Prevent it getting too wide */
-    font-size: 0.95em;
-    border: 1px solid transparent;
+    font-size: 13px; /* Slightly smaller */
+    justify-content: space-between;
+    align-items: center;
+    max-width: 95%; /* Prevent it from touching screen edges */
+    min-height: 25px;
+    flex-wrap: wrap;
+    gap: 10px; /* Space between items if they wrap */
+    box-sizing: border-box; /* Include padding/border in width */
 }
 
-.status-info {
-    color: #00529B;
-    background-color: #BDE5F8;
-    border-color: #00529B;
+.route-info-bar.visible { /* Class added by JS to show the bar */
+    display: flex;
 }
 
-.status-success {
-    color: #270;
-    background-color: #DFF2BF;
-     border-color: #270;
+
+.route-stats span {
+    margin-right: 12px; /* Space out stats */
+    white-space: nowrap; /* Prevent stats from wrapping individually */
+}
+.route-stats span:last-child {
+    margin-right: 0; /* No margin on the last item */
 }
 
-.status-warning {
-    color: #9F6000;
-    background-color: #FEEFB3;
-     border-color: #9F6000;
+.route-stats strong {
+    color: #444;
 }
 
-.status-error {
-    color: #D8000C;
-    background-color: #FFD2D2;
-     border-color: #D8000C;
+.route-summary-text {
+    text-align: center; /* Align summary text to the right */
+    flex-grow: 1; /* Allow summary text to take available space */
+    min-width: 150px; /* Ensure some minimum width */
+}
+.route-summary-text strong { /* Style line numbers */
+    color: #007bff; /* Example blue color */
+    font-weight: bold;
 }
 
-.route-polyline {
-    stroke: blue;
-    stroke-width: 4;
-    stroke-opacity: 0.7;
-    stroke-dasharray: 5, 10; /* Dashed line pattern */
-    fill: none; /* Polylines shouldn't be filled */
+/* Status Message Styling */
+.status-message {
+    /* Replaces the fixed positioning */
+    text-align: center;
+    padding: 5px 10px;
+    margin: 5px auto 5px auto; /* Center below info bar */
+    font-size: 13px;
+    color: #555;
+    max-width: 95%;
+    border-radius: 3px;
+    /* Optional background/border styling based on type */
+    /* Example (add classes in JS for status-info, status-warning, status-error) */
+    background-color: #f8f9fa; /* Default light background */
+    border: 1px solid #eee;
 }
 
-.route-polyline-walk {
-    stroke: green;
-    stroke-width: 4;
-    stroke-opacity: 0.8;
-    stroke-dasharray: 2, 4; /* Different dash pattern */
+.status-message.status-success {
+    background-color: #d4edda;
+    border-color: #c3e6cb;
+    color: #155724;
+}
+.status-message.status-warning {
+    background-color: #fff3cd;
+    border-color: #ffeeba;
+    color: #856404;
+}
+.status-message.status-error {
+    background-color: #f8d7da;
+    border-color: #f5c6cb;
+    color: #721c24;
+}
+
+
+/* Map Container Styling */
+#map {
+    width: 100%;
+    /* height: 500px; */ /* Example fixed height */
+    flex-grow: 1; /* Make map take remaining vertical space */
+    border-top: 1px solid #ccc; /* Separator line */
 }
