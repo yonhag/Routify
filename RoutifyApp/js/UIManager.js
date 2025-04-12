@@ -33,99 +33,62 @@ class UIManager {
         }
 
         console.log(`Requesting route via Flask proxy from ${this.currentUserLocation.lat}, ${this.currentUserLocation.lng} to ${endCoords.lat}, ${endCoords.lng}`);
-        updateStatusMessage("Calculating route...", 'info'); // Inform user
+        console.log(`Requesting route from User:${this.currentUserLocation.lat},${this.currentUserLocation.lng} to Dest:${endCoords.lat},${endCoords.lng}`);
+        updateStatusMessage("Calculating route...", 'info');
 
         const payload = {
-            type: 2, // Type for the C++ backend
-            startLat: this.currentUserLocation.lat,
+            type: 2,
+            startLat: this.currentUserLocation.lat, // User's actual location
             startLong: this.currentUserLocation.lng,
-            endLat: endCoords.lat,
+            endLat: endCoords.lat, // Clicked destination
             endLong: endCoords.lng,
-            gen: 150, // Consider making these configurable later
-            mut: 0.3,
-            popSize: 100
+            gen: 150, mut: 0.3, popSize: 100
         };
 
-        // Clear previous route display before sending the request
-        this.markerManager.clearRouteDisplay(); // Assuming this clears lines/markers for the route
+        this.markerManager.clearRouteDisplay();
+        // Store destination coords locally if needed later, e.g., for drawing final walk
+        const destinationCoords = { lat: endCoords.lat, lng: endCoords.lng }; // Make a copy
 
-        // Call the IMPORTED sendApiRequest function
-        sendApiRequest('/api/route', payload) // Now correctly refers to the imported function
-            .then(response => { // Process the PARSED JSON response
-                console.log("[UIManager.requestRoute .then] Received response object:", response);
+        sendApiRequest('/api/route', payload)
+            .then(response => {
+                console.log("[UIManager] Received response:", response);
 
-                // --- START OF ROBUST CHECKING ---
-
-                // 1. Check if response exists at all
-                if (!response) {
-                    console.error("[UIManager.requestRoute] Error: Received null or undefined response from API.");
-                    updateStatusMessage("Error: Failed to get a valid response from the server.", 'error');
-                    this.markerManager.clearRouteDisplay(); // Ensure cleanup
-                    return; // Stop processing
+                // --- Robust checking from previous steps ---
+                if (!response || response.error || !Array.isArray(response.detailed_steps)) {
+                     // ... handle errors, clear display, update status ...
+                     console.error("Invalid or error response from backend.");
+                     updateStatusMessage("Failed to get a valid route.", 'error');
+                     this.markerManager.clearRouteDisplay();
+                     return;
                 }
-
-                // 2. Check for backend-reported errors
-                if (response.error) {
-                    console.error("[UIManager.requestRoute] Backend returned an error:", response.error, response.details);
-                    updateStatusMessage(`Server error: ${response.error}. ${response.details || ''}`, 'error');
-                    this.markerManager.clearRouteDisplay(); // Ensure cleanup
-                    return; // Stop processing
+                if (response.detailed_steps.length === 0) {
+                     // ... handle no steps, update status ...
+                     updateStatusMessage("No route path found.", 'warning');
+                     return;
                 }
+                // --- End Checks ---
 
-                // 3. Check if 'detailed_steps' exists and is an array
-                const steps = response.detailed_steps; // Assign for clarity
-                const isStepsArray = Array.isArray(steps);
-                console.log("[UIManager.requestRoute .then] response.detailed_steps:", steps);
-                console.log("[UIManager.requestRoute .then] Is steps an array:", isStepsArray);
-
-                if (!isStepsArray) {
-                    // It could be a status message like "No route found"
-                    if (response.status && response.status !== "Route found") {
-                         console.warn("[UIManager.requestRoute] Backend status received:", response.status);
-                         updateStatusMessage(`Could not find a route: ${response.status}`, 'warning');
-                    } else {
-                         console.error("[UIManager.requestRoute] Invalid route data received: 'detailed_steps' is missing or not an array.", response);
-                         updateStatusMessage("Error: Received invalid route data from the server.", 'error');
-                    }
-                    this.markerManager.clearRouteDisplay(); // Ensure cleanup
-                    return; // Stop processing
-                }
-
-                // 4. Check if the steps array is empty
-                if (steps.length === 0) {
-                    console.log("[UIManager.requestRoute] Backend returned an empty route (zero steps).");
-                    updateStatusMessage("No route path found (start/end might be the same or no path exists).", 'warning');
-                    // Optionally display start/end markers even if no steps
-                    if (response.from_station && response.to_station) {
-                         // Assuming markerManager has methods for start/end markers distinct from route steps
-                         this.markerManager.addStartEndMarkers(response.from_station, response.to_station);
-                    } else {
-                         this.markerManager.clearRouteDisplay(); // Fallback cleanup
-                    }
-                    return; // Stop processing, it's a valid response but no path to draw
-                }
-
-                // 5. Success: We have a non-empty array of steps!
-                console.log("[UIManager.requestRoute] Valid non-empty steps received. Adding route display.");
+                console.log("[UIManager] Valid steps received. Adding route display.");
                 updateStatusMessage("Route found. Displaying route.", 'success');
-                this.markerManager.addRouteDisplayFromSteps(steps); // Pass the valid steps array
 
-                // Display summary (Optional, if summary exists)
-                if (response.summary) {
-                    const summary = response.summary;
-                    // Append summary to status or display elsewhere
-                    const summaryText = ` Time: ${summary.time_mins.toFixed(1)}m, Cost: ${summary.cost.toFixed(2)}, Transfers: ${summary.transfers}`;
-                    updateStatusMessage(`Route found.${summaryText}`, 'success'); // Example: Update status with details
-                    console.log("Route Summary:", summaryText);
+                // *** PASS USER LOCATION AND DESTINATION COORDS ***
+                if (this.markerManager && this.currentUserLocation) {
+                     this.markerManager.addRouteDisplayFromSteps(
+                         response.detailed_steps,
+                         this.currentUserLocation, // Pass user's start location
+                         destinationCoords       // Pass clicked destination location
+                     );
+                } else {
+                    console.error("Cannot draw route: MarkerManager or currentUserLocation missing.");
                 }
-
-                // --- END OF ROBUST CHECKING ---
+                // ... Optional: Display summary ...
 
             })
-            .catch(error => { // Catch network errors or issues with sendApiRequest itself
-                console.error("[UIManager.requestRoute .catch] Error during API request or processing:", error);
+            .catch(error => {
+                // ... handle errors ...
+                console.error("[UIManager] Error during route request:", error);
                 updateStatusMessage(`Network or processing error: ${error.message}`, 'error');
-                this.markerManager.clearRouteDisplay(); // Ensure cleanup on failure
+                this.markerManager.clearRouteDisplay();
             });
     } // End of requestRoute
 

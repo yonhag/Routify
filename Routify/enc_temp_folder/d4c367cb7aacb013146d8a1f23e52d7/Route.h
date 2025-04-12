@@ -40,10 +40,7 @@ public:
     int getTransferCount() const;
     const std::vector<VisitedStation> getVisitedStations() const;
 
-    double getFitness(int startId, int destinationId, const Graph& graph,
-        const Utilities::Coordinates& userCoords, // User's actual location
-        const Utilities::Coordinates& destCoords) const; // Clicked destination
-
+    double getFitness(int startId, int destinationId, const Graph& graph) const;
     bool isValid(int startId, int destinationId, const Graph& graph) const;
 
     // Static const for walking distance check in validation (if needed)
@@ -56,8 +53,5 @@ public:
     static bool generatePathSegment(int segmentStartId, int segmentEndId, const Graph& graph, std::mt19937& gen, std::vector<VisitedStation>& segment);
 
 private:
-    double calculateWalkTime(const Utilities::Coordinates& c1, const Utilities::Coordinates& c2) const;
-
-    const static double WALK_SPEED_KPH;
     std::vector<VisitedStation> _stations;
 };

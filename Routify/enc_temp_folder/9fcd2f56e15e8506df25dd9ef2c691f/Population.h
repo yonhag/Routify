@@ -7,9 +7,8 @@
 
 class Population {
 public:
-    Population(int size, int startId, int destinationId, const Graph& graph,
-        const Utilities::Coordinates& userCoords,
-        const Utilities::Coordinates& destCoords);
+    explicit Population(int size, int startId, int destinationId, const Graph& graph);
+
     void evolve(int generations, double mutationRate);
     const Route& getBestSolution() const;
 
@@ -20,16 +19,16 @@ public:
     std::vector<Route> getRoutes() const;
 
 private:
-    const Graph& _graph;
     std::vector<Route> _routes;
-
     int _startId;
     int _destinationId;
-    Utilities::Coordinates _userCoords;
-    Utilities::Coordinates _destCoords;
+    const Graph& _graph;
 
     std::mt19937 _gen;
 
     // Renamed and logic changed
     Route generateGuidedRandomRoute(std::mt19937& gen) const;
+
+    // Helper for distance calculation (can be static or free function)
+    static double haversineDistance(double lat1, double lon1, double lat2, double lon2);
 };

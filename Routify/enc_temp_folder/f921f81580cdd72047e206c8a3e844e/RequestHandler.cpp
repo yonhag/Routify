@@ -135,7 +135,7 @@ json RequestHandler::handleFindRouteCoordinates(const json& request_json) {
     std::cout << "Handling Coordinate Route Request (Optimized Pairs)..." << std::endl;
 
     // 1. Extract & Validate Input (no change)
-    RequestData inputData;
+    CoordinateRouteInput inputData;
     json errorJson = extractAndValidateCoordinateInput(request_json, inputData);
     if (!errorJson.is_null()) return errorJson;
 
@@ -146,13 +146,13 @@ json RequestHandler::handleFindRouteCoordinates(const json& request_json) {
 
     // 3. Select Representative START Stations (Closest, Mid, Furthest)
     StationList selectedStartStations; // This will hold up to 3 start stations
-    selectRepresentativeStations(inputData.startCoords.latitude, inputData.startCoords.longitude, allFoundStations.startStations, selectedStartStations);
+    selectRepresentativeStations(inputData.startLat, inputData.startLong, allFoundStations.startStations, selectedStartStations);
     if (selectedStartStations.empty()) {
         return { {"error", "Failed to select any representative start stations (initial list empty?)"} };
     }
 
     // 4. Select ONLY the CLOSEST END Station
-    std::optional<StationPair> closestEndStationOpt = selectClosestStation(inputData.endCoords.latitude, inputData.endCoords.longitude, allFoundStations.endStations);
+    std::optional<StationPair> closestEndStationOpt = selectClosestStation(inputData.endLat, inputData.endLong, allFoundStations.endStations);
     if (!closestEndStationOpt.has_value()) {
         return { {"error", "Failed to select the closest end station (no nearby end stations found?)"} };
     }
@@ -178,17 +178,18 @@ json RequestHandler::handleFindRouteCoordinates(const json& request_json) {
 // --- PRIVATE HELPER FUNCTIONS ---
 
 // Helper 1: Extract and Validate Input
-json RequestHandler::extractAndValidateCoordinateInput(const json& request_json, RequestData& inputData) {
+json RequestHandler::extractAndValidateCoordinateInput(const json& request_json, CoordinateRouteInput& inputData) {
     if (!request_json.contains("startLat") || !request_json.contains("startLong") ||
         !request_json.contains("endLat") || !request_json.contains("endLong")) {
         return { {"error", "Missing start or end coordinates (lat/long)"} };
     }
     try {
-        inputData.startCoords.latitude = request_json["startLat"].get<double>();
-        inputData.startCoords.longitude = request_json["startLong"].get<double>();
-        inputData.endCoords.latitude = request_json["endLat"].get<double>();
-        inputData.endCoords.longitude = request_json["endLong"].get<double>();
-        if (!inputData.startCoords.isValid() || !inputData.endCoords.isValid()) {
+        inputData.startLat = request_json["startLat"].get<double>();
+        inputData.startLong = request_json["startLong"].get<double>();
+        inputData.endLat = request_json["endLat"].get<double>();
+        inputData.endLong = request_json["endLong"].get<double>();
+        if (inputData.startLat < -90 || inputData.startLat > 90 || inputData.startLong < -180 || inputData.startLong > 180 ||
+            inputData.endLat < -90 || inputData.endLat > 90 || inputData.endLong < -180 || inputData.endLong > 180) {
             throw std::runtime_error("Invalid coordinate range.");
         }
         // Extract optional GA params
@@ -209,15 +210,15 @@ json RequestHandler::extractAndValidateCoordinateInput(const json& request_json,
 }
 
 // Helper 2: Find Nearby Stations
-json RequestHandler::findNearbyStationsForRoute(const RequestData& inputData, NearbyStations& foundStations) {
-    std::cout << "Finding nearby stations for start: " << inputData.startCoords.latitude << "," << inputData.startCoords.longitude << std::endl;
-    foundStations.startStations = _graph.getNearbyStations(Utilities::Coordinates(inputData.startCoords.latitude, inputData.startCoords.longitude));
+json RequestHandler::findNearbyStationsForRoute(const CoordinateRouteInput& inputData, NearbyStations& foundStations) {
+    std::cout << "Finding nearby stations for start: " << inputData.startLat << "," << inputData.startLong << std::endl;
+    foundStations.startStations = _graph.getNearbyStations(Utilities::Coordinates(inputData.startLat, inputData.startLong));
     if (foundStations.startStations.empty()) {
         return { {"error", "No stations found near start coordinates"} };
     }
 
-    std::cout << "Finding nearby stations for end: " << inputData.endCoords.latitude << "," << inputData.endCoords.longitude << std::endl;
-    foundStations.endStations = _graph.getNearbyStations(Utilities::Coordinates(inputData.endCoords.latitude, inputData.endCoords.longitude));
+    std::cout << "Finding nearby stations for end: " << inputData.endLat << "," << inputData.endLong << std::endl;
+    foundStations.endStations = _graph.getNearbyStations(Utilities::Coordinates(inputData.endLat, inputData.endLong));
     if (foundStations.endStations.empty()) {
         return { {"error", "No stations found near end coordinates"} };
     }
@@ -227,67 +228,96 @@ json RequestHandler::findNearbyStationsForRoute(const RequestData& inputData, Ne
     return json(); // Return null json on success
 }
 
+// Helper 3: Run GA for a single pair
+// Returns fitness, or -1.0 on failure/invalid route
+double RequestHandler::runGAForPair(int startId, int endId, const CoordinateRouteInput& gaParams, Route& outBestRoute) const {
+    std::cout << "  Testing route from station " << startId << " to " << endId << "..." << std::endl;
+    try {
+        Population pop(gaParams.populationSize, startId, endId, _graph);
+        pop.evolve(gaParams.generations, gaParams.mutationRate);
+        const Route& pairBestRoute = pop.getBestSolution(); // Can throw
+        double fitness = pairBestRoute.getFitness(startId, endId, _graph);
+
+        // Ensure the route is valid before returning fitness > 0
+        if (pairBestRoute.isValid(startId, endId, _graph) && fitness > 0.0 && !std::isnan(fitness)) {
+            outBestRoute = pairBestRoute; // Copy only if valid and fitness > 0
+            std::cout << "  -> Fitness: " << fitness << std::endl;
+            return fitness;
+        }
+        else {
+            std::cerr << "  -> GA produced invalid route or zero/NaN fitness for pair (" << startId << " -> " << endId << ")" << std::endl;
+            return -1.0; // Indicate failure/invalidity
+        }
+    }
+    catch (const std::runtime_error& ga_error) {
+        std::cerr << "  -> GA Runtime Error for pair (" << startId << " -> " << endId << "): " << ga_error.what() << std::endl;
+        return -1.0; // Indicate failure
+    }
+    catch (const std::exception& e) {
+        std::cerr << "  -> Unexpected GA Exception for pair (" << startId << " -> " << endId << "): " << e.what() << std::endl;
+        return -1.0;
+    }
+    catch (...) {
+        std::cerr << "  -> Unknown GA Error for pair (" << startId << " -> " << endId << ")" << std::endl;
+        return -1.0;
+    }
+}
+
 RequestHandler::GaTaskResult RequestHandler::runSingleGaTask(
     int startId,
     int endId,
-    const RequestHandler::RequestData& gaParams, // Use the correct struct name
+    const RequestHandler::CoordinateRouteInput& gaParams, // Assuming CoordinateRouteInput is accessible
     const Graph& graph) // Pass Graph by CONST reference
 {
     RequestHandler::GaTaskResult result;
     result.startStationId = startId;
     result.endStationId = endId;
+    // Optional: Log thread ID
     // std::cout << "  [Thread " << std::this_thread::get_id() << "] Starting GA for pair (" << startId << " -> " << endId << ")" << std::endl;
 
     try {
-        // --- UPDATED Population Constructor Call ---
-        // Pass coordinates from gaParams
-        Population pop(gaParams.populationSize, startId, endId, graph,
-            gaParams.startCoords, gaParams.endCoords); // Pass user and destination coords
-
+        // Create population INSIDE the task scope
+        Population pop(gaParams.populationSize, startId, endId, graph); // graph is const&
         pop.evolve(gaParams.generations, gaParams.mutationRate);
+        const Route& pairBestRoute = pop.getBestSolution(); // Can throw if pop empty after evolution
+        double fitness = pairBestRoute.getFitness(startId, endId, graph);
 
-        // getBestSolution internally uses coords for fitness comparison during evolution
-        const Route& pairBestRoute = pop.getBestSolution(); // Can throw if pop empty
-
-        // --- UPDATED getFitness Call ---
-        // Pass coordinates from gaParams
-        double fitness = pairBestRoute.getFitness(startId, endId, graph,
-            gaParams.startCoords, gaParams.endCoords); // Pass coords
-
-        // Check validity (doesn't need coords) and fitness
+        // Check validity and fitness BEFORE assigning to result
         if (pairBestRoute.isValid(startId, endId, graph) && fitness > 0.0 && !std::isnan(fitness)) {
             result.route = pairBestRoute;   // Copy the valid route
             result.fitness = fitness;
             result.success = true;
+            // Optional: Log success
             // std::cout << "  [Thread " << std::this_thread::get_id() << "] Success. Fitness: " << fitness << std::endl;
         }
         else {
-            std::cerr << "  [Thread " << std::this_thread::get_id() << "] GA produced invalid/zero fitness route for pair (" << startId << " -> " << endId << ") Fitness: " << fitness << std::endl;
-            result.success = false;
+            std::cerr << "  [Thread " << std::this_thread::get_id() << "] GA produced invalid/zero fitness route for pair (" << startId << " -> " << endId << ")" << std::endl;
+            result.success = false; // Mark as failed quality-wise
         }
     }
     catch (const std::runtime_error& ga_error) {
-        std::cerr << "  [Thread " << std::this_thread::get_id() << "] GA Runtime Error pair (" << startId << " -> " << endId << "): " << ga_error.what() << std::endl;
-        result.success = false;
+        std::cerr << "  [Thread " << std::this_thread::get_id() << "] GA Runtime Error for pair (" << startId << " -> " << endId << "): " << ga_error.what() << std::endl;
+        result.success = false; // Mark as failed due to exception
     }
     catch (const std::exception& e) {
-        std::cerr << "  [Thread " << std::this_thread::get_id() << "] GA Exception pair (" << startId << " -> " << endId << "): " << e.what() << std::endl;
+        std::cerr << "  [Thread " << std::this_thread::get_id() << "] Unexpected GA Exception for pair (" << startId << " -> " << endId << "): " << e.what() << std::endl;
         result.success = false;
     }
     catch (...) {
-        std::cerr << "  [Thread " << std::this_thread::get_id() << "] Unknown GA Error pair (" << startId << " -> " << endId << ")" << std::endl;
+        std::cerr << "  [Thread " << std::this_thread::get_id() << "] Unknown GA Error for pair (" << startId << " -> " << endId << ")" << std::endl;
         result.success = false;
     }
 
     return result; // Return the result struct
 }
 
+
 // Helper 4: Iterate through pairs and find the best route
 
 std::optional<RequestHandler::BestRouteResult> RequestHandler::findBestRouteToDestination(
     const StationList& selectedStartStations,
     const StationPair& endStationPair,
-    const RequestData& gaParams)
+    const CoordinateRouteInput& gaParams)
 {
     BestRouteResult overallBest; // Holds the final best result (from BestRouteResult struct)
     overallBest.fitness = -1.0; // Initialize fitness to invalid

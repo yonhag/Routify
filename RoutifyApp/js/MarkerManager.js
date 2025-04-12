@@ -6,8 +6,45 @@
 class MarkerManager {
     constructor(mapManager) {
         this.mapManager = mapManager;
-        this.map = null;
-        this.routeLayer = null; // Holds markers AND polylines for the route
+
+        // --- ALWAYS INITIALIZE LAYER GROUPS ---
+        try {
+            this.routeLayer = L.layerGroup();
+            this.actionPointMarkers = L.layerGroup();
+            console.log("MarkerManager: routeLayer and actionPointMarkers initialized.");
+        } catch (e) {
+            console.error("MarkerManager Error: Failed to initialize L.layerGroup(). Is Leaflet (L) loaded?", e);
+            // Set them to null or an empty object to prevent later 'addLayer' errors,
+            // though drawing will fail.
+            this.routeLayer = null;
+            this.actionPointMarkers = null;
+        }
+        // --- END INITIALIZATION ---
+
+        this.destinationMarker = null;
+        this.startMarker = null;
+
+        // Attempt to add to map if ready, otherwise, maybe add later
+        this.tryAddLayersToMap();
+    }
+
+    tryAddLayersToMap() {
+        const map = this.mapManager.getMapInstance();
+        if (map) {
+            // Only add if the layer group was successfully created
+            if (this.routeLayer && !map.hasLayer(this.routeLayer)) {
+                 this.routeLayer.addTo(map);
+                 console.log("MarkerManager: routeLayer added to map.");
+            }
+            if (this.actionPointMarkers && !map.hasLayer(this.actionPointMarkers)) {
+                 this.actionPointMarkers.addTo(map);
+                 console.log("MarkerManager: actionPointMarkers added to map.");
+            }
+        } else {
+            console.warn("MarkerManager: Map not ready. Layers not added yet.");
+            // You might need a mechanism to call tryAddLayersToMap() again
+            // once the map *is* ready, e.g., triggered by an event from MapManager.
+        }
     }
 
     /**
@@ -28,115 +65,165 @@ class MarkerManager {
      * Clears existing route markers/lines and adds new ones based on the detailed steps array.
      * @param {Array} detailedStepsArray - Array of detailed step objects from the backend.
      */
-    addRouteDisplayFromSteps(detailedStepsArray) { // Renamed for clarity
-        if (!this.map) { console.error("Map not initialized for addRouteDisplayFromSteps."); return; }
-        if (!this.routeLayer) { console.error("Route layer not initialized."); return; }
+    addRouteDisplayFromSteps(steps, userLocation, destinationCoords) {
+        const map = this.mapManager.getMapInstance();
+        if (!map) { /* ... error handling ... */ return; }
+        if (!steps || steps.length === 0) { /* ... error handling ... */ return; }
+        if (!userLocation) { console.error("User location missing for drawing initial walk."); return; }
+        if (!destinationCoords) { console.error("Destination coords missing for drawing final walk."); return; }
 
-        this.clearRouteDisplay(); // Clear previous route visuals
 
-        if (!Array.isArray(detailedStepsArray)) {
-            console.error("Invalid data for route display: Expected a detailed_steps array.", detailedStepsArray);
-            return;
+        this.clearRouteDisplay(); // Clear previous route
+
+        let allRoutePoints = []; // For bounds fitting
+        const walkStyle = { color: 'green', weight: 4, opacity: 0.7, dashArray: '8, 8' }; // Distinct walk style
+
+        // --- 1. Draw Initial Walk Line ---
+        const firstStationCoords = [steps[0].from_lat, steps[0].from_long];
+        const userCoords = [userLocation.lat, userLocation.lng];
+        if (userCoords[0] !== firstStationCoords[0] || userCoords[1] !== firstStationCoords[1]) { // Avoid zero-length line
+             const initialWalkPolyline = L.polyline([userCoords, firstStationCoords], walkStyle);
+             this.routeLayer.addLayer(initialWalkPolyline);
+             allRoutePoints.push(userCoords, firstStationCoords);
+             console.log("Drawing initial walk line.");
+        } else {
+            allRoutePoints.push(userCoords); // Still add user location for bounds
         }
-        if (detailedStepsArray.length === 0) {
-            console.log("No steps received to display.");
-            return;
-        }
-
-        console.log(`Displaying route for ${detailedStepsArray.length} segments.`);
-
-        const allLatLngs = []; // Collect all points for fitting bounds later
-        const actionPointLatLngs = new Set(); // Store unique action point coords as strings
-
-        // --- Define Marker Styles ---
-        const actionMarkerOptions = {
-            radius: 8, // Larger radius
-            fillColor: "#ff7800", // Orange
-            color: "#000",
-            weight: 1,
-            opacity: 1,
-            fillOpacity: 0.8
-        };
-        const passThroughMarkerOptions = {
-            radius: 4, // Smaller radius
-            fillColor: "#007bff", // Blue
-            color: "#fff",
-            weight: 1,
-            opacity: 1,
-            fillOpacity: 0.7
-        };
 
 
-        detailedStepsArray.forEach((step, index) => {
-            if (typeof step.from_lat !== 'number' || typeof step.from_long !== 'number' ||
-                typeof step.to_lat !== 'number' || typeof step.to_long !== 'number') {
-                console.warn(`Skipping step ${index} due to missing coordinates:`, step);
-                return;
+        // --- 2. Draw Transit/Intermediate Walk Segments (Loop) ---
+        steps.forEach(step => {
+            const fromCoords = [step.from_lat, step.from_long];
+            const toCoords = [step.to_lat, step.to_long];
+            let segmentPoints = [fromCoords];
+
+            if (step.intermediate_stops && Array.isArray(step.intermediate_stops)) {
+                step.intermediate_stops.forEach(interStop => {
+                    segmentPoints.push([interStop.lat, interStop.long]);
+                });
+            }
+            segmentPoints.push(toCoords);
+            // Add points from this segment (excluding first point if it was added by previous segment's end)
+            allRoutePoints.push(...segmentPoints.slice(1));
+
+
+            // Determine line style
+            let style;
+            if (step.line_id === 'Walk') {
+                style = walkStyle;
+            } else if (step.line_id === 'Start') {
+                style = { color: 'transparent' }; // Don't draw "Start" line
+            } else {
+                 // Basic example: Blue for public transport
+                style = { color: 'blue', weight: 5, opacity: 0.8 };
+                 // Add more specific colors based on line_id or type if needed
             }
 
-            const fromLatLng = L.latLng(step.from_lat, step.from_long);
-            const toLatLng = L.latLng(step.to_lat, step.to_long);
-            allLatLngs.push(fromLatLng, toLatLng); // Add both points for bounds calculation
-
-            // --- Draw Polyline for the segment ---
-            const polylineOptions = {
-                className: step.line_id === 'Walk' ? 'route-polyline-walk' : 'route-polyline' // Use CSS classes
-                // Or define styles directly:
-                // color: step.line_id === 'Walk' ? 'green' : 'blue',
-                // weight: 4,
-                // opacity: 0.7,
-                // dashArray: step.line_id === 'Walk' ? '2, 4' : '5, 10'
-            };
-            const segmentLine = L.polyline([fromLatLng, toLatLng], polylineOptions);
-            this.routeLayer.addLayer(segmentLine);
-
-            // --- Add Markers (Decide style based on action point) ---
-            const fromKey = `${fromLatLng.lat},${fromLatLng.lng}`;
-            const toKey = `${toLatLng.lat},${toLatLng.lng}`;
-
-            // Add start marker (only once for the very first step)
-            if (index === 0) {
-                 const startMarker = L.circleMarker(fromLatLng, actionMarkerOptions).bindTooltip(
-                    `Depart: ${step.from_name} (Code: ${step.from_code})`
-                 );
-                 this.routeLayer.addLayer(startMarker);
-                 actionPointLatLngs.add(fromKey);
+            if (step.line_id !== 'Start') { // Avoid drawing for the conceptual 'Start' segment if present
+                const polyline = L.polyline(segmentPoints, style);
+                this.routeLayer.addLayer(polyline);
             }
 
-             // Add arrival marker for this segment
-             // Determine if it's an action point or pass-through
-             const isAction = step.to_is_action_point;
-             const markerOptions = isAction ? actionMarkerOptions : passThroughMarkerOptions;
-             let hoverText = isAction
-                 ? `${step.action_description || 'Action'}: ${step.to_name} (Code: ${step.to_code})`
-                 : `Pass through: ${step.to_name} (Code: ${step.to_code})`;
-             if(step.action === "Take line" && step.line_id) hoverText += `\n(Via Line: ${step.line_id})`;
 
-             // Only add marker if it hasn't been added as an action point already
-             // (avoids overlapping action markers on transfer points)
-             // However, we might *want* to show pass-through markers even at action points?
-             // Let's add it regardless for now, the style difference will show.
-             const arrivalMarker = L.circleMarker(toLatLng, markerOptions).bindTooltip(hoverText);
-             this.routeLayer.addLayer(arrivalMarker);
-
-             // Keep track if it was an action point
-             if (isAction) {
-                 actionPointLatLngs.add(toKey);
+            // Add markers for action points (Orange markers)
+            let actionDesc = step.action_description || 'Waypoint'; // Default text
+            if (step.from_is_action_point) {
+                 // If it's the very first step's "from", it's the effective Start Station
+                const markerTitle = (step.segment_index === 0) ? `Start Station: ${step.from_name}` : step.from_name;
+                const markerPopup = (step.segment_index === 0) ? `<b>Start Station</b><br>${step.from_name}` : `<b>${actionDesc}</b><br>${step.from_name}`;
+                const marker = L.marker(fromCoords, { title: markerTitle }).bindPopup(markerPopup);
+                this.actionPointMarkers.addLayer(marker);
+            }
+             // Check if 'to' is an action point AND it's the very last point of the whole route
+             const isFinalStation = (step.segment_index === steps.length - 1);
+             if (step.to_is_action_point) {
+                 const markerTitle = isFinalStation ? `End Station: ${step.to_name}` : step.to_name;
+                 const markerPopup = isFinalStation ? `<b>End Station</b><br>${step.to_name}` : `<b>${actionDesc}</b><br>${step.to_name}`;
+                 const marker = L.marker(toCoords, { title: markerTitle }).bindPopup(markerPopup);
+                 this.actionPointMarkers.addLayer(marker);
              }
 
-        }); // end forEach step
+        }); // End loop through steps
 
-        console.log("Route polylines and markers added.");
 
-        // Zoom/pan to fit the entire route if points were added
-        if (allLatLngs.length > 0) {
-            try {
-                // Create bounds from all points collected
-                const bounds = L.latLngBounds(allLatLngs);
-                this.map.fitBounds(bounds.pad(0.1)); // pad adds margin
-            } catch (boundsError) {
-                 console.error("Error fitting map bounds to route display:", boundsError);
+        // --- 3. Draw Final Walk Line ---
+        const lastStationCoords = [steps[steps.length - 1].to_lat, steps[steps.length - 1].to_long];
+        const destCoords = [destinationCoords.lat, destinationCoords.lng];
+        if (lastStationCoords[0] !== destCoords[0] || lastStationCoords[1] !== destCoords[1]) { // Avoid zero-length line
+             const finalWalkPolyline = L.polyline([lastStationCoords, destCoords], walkStyle);
+             this.routeLayer.addLayer(finalWalkPolyline);
+             allRoutePoints.push(destCoords); // Add destination for bounds fitting
+             console.log("Drawing final walk line.");
+        } else {
+             // If last station IS the destination, ensure it's in bounds calculation
+             if (allRoutePoints.length === 0 || allRoutePoints[allRoutePoints.length-1][0] !== lastStationCoords[0] || allRoutePoints[allRoutePoints.length-1][1] !== lastStationCoords[1] ){
+                  allRoutePoints.push(lastStationCoords);
+             }
+        }
+
+
+        // --- Fit Bounds ---
+        if (allRoutePoints.length > 0) {
+            try{
+                 map.flyToBounds(L.latLngBounds(allRoutePoints), { padding: [50, 50], maxZoom: 17 }); // Add padding & limit zoom
+            } catch (e) {
+                 console.error("Error fitting map bounds:", e, allRoutePoints);
             }
+        }
+    } // End addRouteDisplayFromSteps
+
+ // --- Definition of addDestinationMarker ---
+    /**
+     * Adds or updates the destination marker on the map.
+     * Clears any previous destination marker before adding the new one.
+     * @param {number} lat - Latitude of the destination.
+     * @param {number} lng - Longitude of the destination.
+     */
+    addDestinationMarker(lat, lng) {
+        const map = this.mapManager.getMapInstance();
+        if (!map) {
+            console.error("Cannot add destination marker: Map instance not available.");
+            return; // Exit if map isn't ready
+        }
+
+        // 1. Clear any existing destination marker first
+        this.clearDestinationMarker(); // Ensure the previously defined clear function is called
+
+        // 2. Define marker options (customize icon later if desired)
+        const markerOptions = {
+            title: "Destination" // Tooltip text on hover
+            // Example custom icon (requires defining destinationIcon):
+            // icon: L.icon({
+            //     iconUrl: 'path/to/destination-flag-icon.png',
+            //     iconSize: [25, 41], // size of the icon
+            //     iconAnchor: [12, 41], // point of the icon which will correspond to marker's location
+            //     popupAnchor: [1, -34] // point from which the popup should open relative to the iconAnchor
+            // })
+        };
+
+        // 3. Create the new Leaflet marker
+        this.destinationMarker = L.marker([lat, lng], markerOptions);
+
+        // 4. Add a popup to the marker (optional but helpful)
+        this.destinationMarker.bindPopup(`<b>Destination</b><br>Lat: ${lat.toFixed(5)}, Lng: ${lng.toFixed(5)}`);
+
+        // 5. Add the marker to the map
+        this.destinationMarker.addTo(map);
+
+        console.log(`Destination marker added at: Lat=${lat}, Lng=${lng}`);
+    }
+    // --- End of addDestinationMarker ---
+
+    clearDestinationMarker() {
+        const map = this.mapManager.getMapInstance();
+        if (this.destinationMarker) {
+            if (map) {
+                map.removeLayer(this.destinationMarker);
+            } else {
+                 console.warn("Could not remove destination marker from map: Map instance unavailable.");
+            }
+            this.destinationMarker = null; // Clear the reference
+            console.log("Destination marker cleared.");
         }
     }
 

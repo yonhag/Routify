@@ -20,14 +20,18 @@ function initializeApp() {
     try {
         const map = mapManager.initializeMap();
         if (!map) throw new Error("Map initialization failed.");
-        markerManagerInstance.initializeLayers();
+        
+        if (markerManagerInstance) {
+            markerManagerInstance.tryAddLayersToMap(); // Call the helper function
+        } else {
+            console.error("Failed to add marker layers: markerManagerInstance is null");
+        }
         uiManagerInstance.setupEventListeners(); // Setup listeners
-
-        // 4. API Request Function (Defined Above or Imported) is ready
 
         // 5. Attempt Geolocation
         console.log("Attempting geolocation...");
         map.locate({ setView: false, maxZoom: 18 });
+        
 
         map.on('locationfound', (e) => {
             // Update the global variable

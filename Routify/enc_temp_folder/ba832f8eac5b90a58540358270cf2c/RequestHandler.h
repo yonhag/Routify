@@ -18,14 +18,13 @@ private:
     using StationList = std::vector<StationPair>;
     
     // --- Helper Structs (defined within RequestHandler or globally) ---
-    struct RequestData {
-        Utilities::Coordinates startCoords; // User location
-        Utilities::Coordinates endCoords;   // Destination
+    struct CoordinateRouteInput {
+        double startLat = 0.0, startLong = 0.0, endLat = 0.0, endLong = 0.0;
         int generations = 1000;
         double mutationRate = 0.3;
         int populationSize = 100;
     };
-
+    
     struct NearbyStations {
         StationList startStations;
         StationList endStations;
@@ -57,23 +56,23 @@ private:
 
     // Refactored handlers for Type 2
     json handleFindRouteCoordinates(const json& request_json); // Top level
-    json extractAndValidateCoordinateInput(const json& request_json, RequestData& inputData);
-    json findNearbyStationsForRoute(const RequestData& inputData, NearbyStations& foundStations); // Finds ALL nearby
+    json extractAndValidateCoordinateInput(const json& request_json, CoordinateRouteInput& inputData);
+    json findNearbyStationsForRoute(const CoordinateRouteInput& inputData, NearbyStations& foundStations); // Finds ALL nearby
 
+    // Updated/New helpers
+    void selectRepresentativeStations(double centerLat, double centerLon, const StationList& allNearby, StationList& selected);
+    std::optional<StationPair> selectClosestStation(double centerLat, double centerLon, const StationList& allNearby); 
 
-    // helper for finding best route
+    // Updated helper for finding best route
     std::optional<BestRouteResult> findBestRouteToDestination( // Renamed
         const StationList& selectedStartStations,
         const StationPair& endStationPair, // Takes single end station
-        const RequestData& gaParams);
+        const CoordinateRouteInput& gaParams);
 
-    // helpers
-    std::optional<StationPair> selectClosestStation(double centerLat, double centerLon, const StationList& allNearby); 
-    void selectRepresentativeStations(double centerLat, double centerLon, const StationList& allNearby, StationList& selected);
-    static RequestHandler::GaTaskResult runSingleGaTask(int startId, int endId, const RequestHandler::RequestData& gaParams, const Graph& graph);
-
+    // Unchanged helpers
+    double runGAForPair(int startId, int endId, const CoordinateRouteInput& gaParams, Route& outBestRoute) const;
     json formatRouteResponse(const BestRouteResult& bestResult);
-
+    static RequestHandler::GaTaskResult runSingleGaTask(int startId, int endId, const RequestHandler::CoordinateRouteInput& gaParams, const Graph& graph);
     static std::vector<Graph::Station> reconstructIntermediateStops(
         int segmentStartCode,
         int segmentEndCode,

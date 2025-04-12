@@ -112,19 +112,12 @@ namespace {
 } // end anonymous namespace
 
 // --- Population Constructor (No changes needed here, uses the fixed BFS) ---
-Population::Population(int size, int startId, int destinationId, const Graph& graph,
-    const Utilities::Coordinates& userCoords,
-    const Utilities::Coordinates& destCoords)
-    : _startId(startId), _destinationId(destinationId), _graph(graph),
-    _userCoords(userCoords), _destCoords(destCoords) // Initialize members
+Population::Population(int size, int startId, int destinationId, const Graph& graph)
+    : _startId(startId), _destinationId(destinationId), _graph(graph)
 {
     // ... (validation, seeding, reserve) ...
     if (size <= 0) { throw std::invalid_argument("Population size must be positive."); }
-    
-    std::random_device rd; 
-    _gen.seed(rd()); 
-    _routes.reserve(size);
-
+    std::random_device rd; _gen.seed(rd()); _routes.reserve(size);
     if (!graph.hasStation(startId) || !graph.hasStation(destinationId)) {
         throw std::runtime_error("Population initialization failed: Invalid start/destination ID provided.");
     }
@@ -238,12 +231,10 @@ void Population::evolve(int generations, double mutationRate) {
             // Find best fitness in the *current* new generation
             const Route& best_gen_route = *std::max_element(_routes.begin(), _routes.end(),
                 [this](const Route& a, const Route& b) {
-                    // Pass member coordinates stored in the Population object
-                    return a.getFitness(_startId, _destinationId, _graph, _userCoords, _destCoords) <
-                        b.getFitness(_startId, _destinationId, _graph, _userCoords, _destCoords);
+                    return a.getFitness(_startId, _destinationId, _graph) < b.getFitness(_startId, _destinationId, _graph);
                 });
-            double best_fitness = best_gen_route.getFitness(_startId, _destinationId, _graph, _userCoords, _destCoords);
-    
+            double best_fitness = best_gen_route.getFitness(_startId, _destinationId, _graph);
+
             // Print periodically
             if (genIndex == 0 || (genIndex + 1) % 50 == 0 || genIndex == generations - 1) {
                 std::cout << "Generation " << (genIndex + 1) << "/" << generations
@@ -268,8 +259,7 @@ const Route& Population::getBestSolution() const {
     // Find the element with the maximum fitness
     auto best_it = std::max_element(_routes.begin(), _routes.end(),
         [this](const Route& a, const Route& b) {
-            return a.getFitness(_startId, _destinationId, _graph, _userCoords, _destCoords) <
-                b.getFitness(_startId, _destinationId, _graph, _userCoords, _destCoords);
+            return a.getFitness(_startId, _destinationId, _graph) < b.getFitness(_startId, _destinationId, _graph);
         });
     // Check if max_element somehow failed (e.g., all NaN fitness - very unlikely)
     if (best_it == _routes.end()) {
@@ -334,12 +324,12 @@ void Population::performSelection() {
     // Sort routes by fitness, highest first. Handle potential NaNs.
     std::sort(_routes.begin(), _routes.end(),
         [this](const Route& a, const Route& b) {
-            // Pass member coordinates
-            double fitnessA = a.getFitness(_startId, _destinationId, _graph, _userCoords, _destCoords);
-            double fitnessB = b.getFitness(_startId, _destinationId, _graph, _userCoords, _destCoords);
-            if (std::isnan(fitnessB)) return true;
-            if (std::isnan(fitnessA)) return false;
-            return fitnessA > fitnessB; // Higher fitness first
+            double fitnessA = a.getFitness(_startId, _destinationId, _graph);
+            double fitnessB = b.getFitness(_startId, _destinationId, _graph);
+            // Sort NaNs to the end (equivalent to lowest fitness)
+            if (std::isnan(fitnessB)) return true;  // B is NaN, A comes first
+            if (std::isnan(fitnessA)) return false; // A is NaN, B comes first
+            return fitnessA > fitnessB; // Normal descending sort for valid fitness values
         });
 
     // Calculate the number to keep: Half rounded up, but minimum 1.

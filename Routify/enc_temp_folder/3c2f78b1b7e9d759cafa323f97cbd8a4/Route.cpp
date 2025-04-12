@@ -12,8 +12,6 @@
 #include <vector>    // Explicit include
 #include <unordered_set> // For visited checks in segment generation
 
-const double Route::WALK_SPEED_KPH = 5.0;
-
 // --- Route Class Implementation ---
 
 namespace {
@@ -22,7 +20,6 @@ namespace {
             method == Graph::TransportMethod::Train ||
             method == Graph::TransportMethod::LightTrain;
     }
-
 }
 
 // Add a visited station step
@@ -52,21 +49,47 @@ double Route::getTotalCost() const {
 
 // Calculate number of transfers (line changes)
 int Route::getTransferCount() const {
-    if (_stations.size() < 2) return 0;
-    int vehicleBoardings = 0;
+    // Need at least two segments (start -> vehicle) to have any boardings.
+    if (_stations.size() < 2) {
+        return 0;
+    }
+
+    int vehicleBoardings = 0; // Count total times a vehicle is boarded
+
+    // Iterate through the segments (from the second station onwards)
     for (size_t i = 1; i < _stations.size(); ++i) {
         const auto& currentVs = _stations[i];
-        const auto& prevVs = _stations[i - 1];
+        const auto& prevVs = _stations[i - 1]; // Station arrived at before current
+
         Graph::TransportMethod currentMethod = currentVs.line.type;
         const std::string& currentLineId = currentVs.line.id;
+
+        // Get previous method/ID. Handle the "Start" case (index i=1).
+        // The line associated with prevVs (at index i-1) is the one taken *to reach it*.
         Graph::TransportMethod prevMethod = prevVs.line.type;
         const std::string& prevLineId = prevVs.line.id;
+
+        // Check if the CURRENT segment involves boarding a public transport vehicle
         if (isPublicTransport(currentMethod)) {
-            if (!isPublicTransport(prevMethod) || (currentLineId != prevLineId)) {
+            // Now, determine if this boarding is a "new" boarding event
+            // compared to the previous segment.
+
+            // It's a new boarding if:
+            // 1. The previous segment was NOT public transport (i.e., Walk or Start)
+            // OR
+            // 2. The previous segment WAS public transport, BUT the line ID changed.
+            if (!isPublicTransport(prevMethod) ||
+                (isPublicTransport(prevMethod) && currentLineId != prevLineId))
+            {
                 vehicleBoardings++;
             }
+            // Else (previous was public transport AND same line ID), it's not a new boarding.
         }
     }
+
+    // The number of transfers is the number of boardings MINUS ONE
+    // (because the first boarding doesn't count as a transfer).
+    // Ensure the result is not negative if there were 0 or 1 boardings.
     return std::max(0, vehicleBoardings - 1);
 }
 
@@ -169,84 +192,43 @@ bool Route::isValid(int startId, int destinationId, const Graph& graph) const {
 
 
 // --- getFitness - Higher is better ---
-double Route::getFitness(int startId, int destinationId, const Graph& graph,
-    const Utilities::Coordinates& userCoords,
-    const Utilities::Coordinates& destCoords) const
-{
-    // --- Initial Checks ---
-    if (_stations.empty() || !isValid(startId, destinationId, graph)) {
-        return 0.0; // Invalid routes get zero fitness
-    }
+double Route::getFitness(int startId, int destinationId, const Graph& graph) const {
+    if (!isValid(startId, destinationId, graph)) { return 0.0; }
 
-    // --- Calculate Initial Walk Time ---
-    double initialWalkTime = 0;
-    try {
-        initialWalkTime = calculateWalkTime(userCoords, _stations.front().station.coordinates);
-    }
-    catch (const std::exception& e) {
-        std::cerr << "Warning: Exception calculating initial walk time: " << e.what() << std::endl;
-        // Decide how to handle: return 0 fitness? Or just proceed with 0 walk time?
-        // Proceeding with 0 time, but the walk penalty might still apply if distance was > 0 implicitly
-    }
-
-    // --- Calculate Final Walk Time ---
-    double finalWalkTime = 0;
-    try {
-        int lastStationIdInRoute = _stations.back().line.to; // ID of the station reached by the last segment
-        const Graph::Station& lastStation = graph.getStationById(lastStationIdInRoute);
-        finalWalkTime = calculateWalkTime(lastStation.coordinates, destCoords);
-    }
-    catch (const std::exception& e) {
-        std::cerr << "Warning: Exception calculating final walk time for station ID "
-            << (_stations.empty() ? -1 : _stations.back().line.to) // Safely access ID
-            << ": " << e.what() << std::endl;
-    }
-
-    // --- Existing Station-to-Station Calculations ---
-    double totalStationToStationTime = getTotalTime(); // Time ONLY between stations
+    // --- Calculate Score Components ---
+    double totalTime = getTotalTime();
     double totalCost = getTotalCost();
-    int transfers = getTransferCount(); // Calculated as boardings - 1
+    int transfers = getTransferCount();
 
-    // --- Define weights/penalties (Crucial Step - High Walk Penalty) ---
-    const double time_weight = 1.0;
-    const double cost_weight = 0.1;
-    const double transfer_penalty = 45.0;   // High penalty per transfer
-    const double walk_penalty_factor = 15.0; // *** VERY HIGH walk penalty factor ***
-    const double stop_penalty = 1.0;        // Lower stop penalty to encourage staying on
+    // --- Define weights/penalties (ADJUSTED) ---
+    const double time_weight = 1.0;         // Keep time as base
+    const double cost_weight = 0.1;         // Reduce cost importance further?
+    const double transfer_penalty = 45.0;   // *** INCREASED SIGNIFICANTLY (e.g., 45 min equivalent) ***
+    const double walk_penalty_factor = 2.0; // Keep walk penalty moderate
+    const double stop_penalty = 2.0;        // *** INCREASED (e.g., 2 min equivalent per stop) ***
 
-    // --- Calculate Score ---
-    // 1. Base time includes all segments
-    double totalEffectiveTime = initialWalkTime + totalStationToStationTime + finalWalkTime;
+    // Calculate base score + transfer penalty
+    double score = (time_weight * totalTime) + (cost_weight * totalCost) + (transfers * transfer_penalty);
 
-    // 2. Base score components
-    double score = (time_weight * totalEffectiveTime) +
-        (cost_weight * totalCost) +
-        (transfers * transfer_penalty);
-
-    // 3. Add EXTRA penalty factor for ALL walking segments
-    double totalWalkPenalty = 0.0;
-    totalWalkPenalty += initialWalkTime * walk_penalty_factor; // Penalize initial walk
-    for (size_t i = 1; i < _stations.size(); ++i) { // Penalize intermediate walks
+    // Add walking penalty
+    double walkPenalty = 0.0;
+    for (size_t i = 1; i < _stations.size(); ++i) {
         if (_stations[i].line.id == "Walk") {
-            // Note: travelTime for walk is already included in totalEffectiveTime via getTotalTime()
-            // This adds the *additional* penalty factor.
-            totalWalkPenalty += _stations[i].line.travelTime * walk_penalty_factor;
+            walkPenalty += _stations[i].line.travelTime * walk_penalty_factor;
         }
     }
-    totalWalkPenalty += finalWalkTime * walk_penalty_factor; // Penalize final walk
-    score += totalWalkPenalty;
+    score += walkPenalty;
 
-    // 4. Add stop penalty (based only on station-to-station segments)
+    // Add stop penalty (number of segments/steps minus transfers)
+    // Subtract 1 because _stations includes the start point
     int num_segments = static_cast<int>(_stations.size()) - 1;
-    // Calculate stops based on segments *excluding* transfers to avoid double counting penalty?
-    int num_stops = std::max(0, num_segments - transfers); // Or simply num_segments if every leg counts
+    int num_stops = std::max(0, num_segments - transfers); // Approx. stops excluding transfer points
     score += num_stops * stop_penalty;
 
     // --- Convert Score to Fitness ---
     if (score <= std::numeric_limits<double>::epsilon()) {
-        return std::numeric_limits<double>::max(); // Avoid division by zero
+        return std::numeric_limits<double>::max();
     }
-    // Fitness = 1 / score (higher score = lower fitness)
     return 1.0 / score;
 }
 
@@ -439,18 +421,8 @@ void Route::mutate(double mutationRate, std::mt19937& gen, int startId, int dest
 
         }
         // else: Walking distance too long, do nothing for this mutation type
-
-
     }
     // else: No other mutation types defined for now
-
-}
-
-
-double Route::calculateWalkTime(const Utilities::Coordinates& c1, const Utilities::Coordinates& c2) const {
-    double dist = Utilities::calculateHaversineDistance(c1, c2);
-    if (dist < 0) return 0;
-    return (dist / Route::WALK_SPEED_KPH) * 60.0; // minutes
 }
 
 
