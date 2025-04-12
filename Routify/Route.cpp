@@ -357,8 +357,8 @@ bool Route::generatePathSegment(int segmentStartId, int segmentEndId, const Grap
                 Utilities::Coordinates(curLat, curLon),
                 Utilities::Coordinates(destLat, destLon)
             );
-            const double MAX_WALKING_DISTANCE_SEGMENT = 0.5;
-            if (distanceToSegmentEnd < MAX_WALKING_DISTANCE_SEGMENT) {
+            if (const double MAX_WALKING_DISTANCE_SEGMENT = 0.5;
+                distanceToSegmentEnd < MAX_WALKING_DISTANCE_SEGMENT) {
                 Graph::TransportationLine walkingEdge("Walk", segmentEndId, (distanceToSegmentEnd / 5.0) * 60.0, 0, Graph::TransportMethod::Walk);
                 // *** Use correct prevCode when adding final walking step ***
                 segment.push_back(VisitedStation(destStation, walkingEdge, currentCode)); // currentCode is the station *before* the walk
@@ -373,7 +373,7 @@ bool Route::generatePathSegment(int segmentStartId, int segmentEndId, const Grap
             std::vector<const Graph::TransportationLine*> validLines; std::vector<double> weights;
             for (const auto& line : availableLines) { /* ... find valid lines/weights ... */
                 int nextCode = line.to;
-                if (graph.hasStation(nextCode) && visitedCodesSegment.find(nextCode) == visitedCodesSegment.end()) {
+                if (graph.hasStation(nextCode) && !visitedCodesSegment.contains(nextCode)) {
                     const Graph::Station& nextStation = graph.getStationById(nextCode);
 					double nextLat = nextStation.coordinates.latitude; double nextLon = nextStation.coordinates.longitude;
                     double distToDest = Utilities::calculateHaversineDistance(
@@ -527,6 +527,55 @@ void Route::mutate(double mutationRate, std::mt19937& gen, int startId, int dest
     // else: No other mutation types defined for now
 
 }
+
+
+// Crossover function (single-point based on common station)
+Route Route::crossover(const Route& parent1, const Route& parent2, std::mt19937& gen) {
+    const auto& visited1 = parent1.getVisitedStations();
+    const auto& visited2 = parent2.getVisitedStations();
+
+    // Basic checks for valid crossover
+    if (visited1.size() <= 2 || visited2.size() <= 2) {
+        // Not enough intermediate points, return one parent (e.g., the first one)
+        return parent1;
+    }
+
+    // Find common intermediate stations
+    std::vector<std::pair<size_t, size_t>> commonIndices;
+    for (size_t i = 1; i < visited1.size() - 1; ++i) { // Exclude start/end
+        for (size_t j = 1; j < visited2.size() - 1; ++j) { // Exclude start/end
+            // Use Station's operator==
+            if (visited1[i].station == visited2[j].station) {
+                commonIndices.push_back({ i, j });
+            }
+        }
+    }
+
+    if (!commonIndices.empty()) {
+        // Choose a random common station pair
+        std::uniform_int_distribution<> common_dis(0, static_cast<int>(commonIndices.size() - 1));
+        auto [idx1, idx2] = commonIndices[common_dis(gen)]; // Indices in parent1 and parent2
+
+        // Create child route by combining segments
+        Route childRoute;
+        // Segment from parent1 up to (and including) the common station
+        for (size_t k = 0; k <= idx1; ++k) {
+            childRoute.addVisitedStation(visited1[k]);
+        }
+        // Segment from parent2 *after* the common station to the end
+        for (size_t k = idx2 + 1; k < visited2.size(); ++k) {
+            childRoute.addVisitedStation(visited2[k]);
+        }
+        // Note: Validity of the child is not guaranteed here, depends on connections at the crossover point.
+        return childRoute;
+    }
+    else {
+        // Fallback: No common intermediate station found. Return one parent randomly.
+        std::uniform_int_distribution<> parent_choice(0, 1);
+        return (parent_choice(gen) == 0) ? parent1 : parent2;
+    }
+}
+
 
 
 double Route::calculateWalkTime(const Utilities::Coordinates& c1, const Utilities::Coordinates& c2) const {

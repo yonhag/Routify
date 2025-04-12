@@ -51,6 +51,7 @@ public:
 
     // Mutation needs graph access and random generator
     void mutate(double mutationRate, std::mt19937& gen, int startId, int destinationId, const Graph& graph);
+    static Route crossover(const Route& parent1, const Route& parent2, std::mt19937& gen);
 
     // Helper for mutation (consider making private or moving logic)
     static bool generatePathSegment(int segmentStartId, int segmentEndId, const Graph& graph, std::mt19937& gen, std::vector<VisitedStation>& segment);

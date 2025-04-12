@@ -20,7 +20,7 @@ namespace {
         int parentCode;
         std::string lineIdFromParent;
         int lineToFromParent;
-        BfsNode(int c = -1, int p = -1, std::string lId = "", int lTo = -1) : stationCode(c), parentCode(p), lineIdFromParent(lId), lineToFromParent(lTo) {}
+        BfsNode(int c = -1, int p = -1, const std::string& lId = "", int lTo = -1) : stationCode(c), parentCode(p), lineIdFromParent(lId), lineToFromParent(lTo) {}
     };
 
     const Graph::TransportationLine& findLineInGraph(const Graph& graph, int fromCode, const std::string& lineId, int lineTo) {
@@ -57,7 +57,7 @@ namespace {
                 const auto& lines = graph.getLinesFrom(currentCode);
                 for (const auto& line : lines) {
                     int nextCode = line.to;
-                    if (graph.hasStation(nextCode) && visitedInfo.find(nextCode) == visitedInfo.end()) {
+                    if (graph.hasStation(nextCode) && !visitedInfo.contains(nextCode)) {
                         visitedInfo[nextCode] = BfsNode(nextCode, currentCode, line.id, line.to);
                         q.push(nextCode);
                     }
@@ -115,7 +115,7 @@ namespace {
 Population::Population(int size, int startId, int destinationId, const Graph& graph,
     const Utilities::Coordinates& userCoords,
     const Utilities::Coordinates& destCoords)
-    : _startId(startId), _destinationId(destinationId), _graph(graph),
+    : _graph(graph), _startId(startId), _destinationId(destinationId),
     _userCoords(userCoords), _destCoords(destCoords) // Initialize members
 {
     // ... (validation, seeding, reserve) ...
@@ -212,7 +212,7 @@ void Population::evolve(int generations, double mutationRate) {
                     idx2 = (idx1 + 1) % current_pop_size;
                 }
 
-                Route child = crossover(_routes[idx1], _routes[idx2], _gen);
+                Route child = Route::crossover(_routes[idx1], _routes[idx2], _gen);
                 child.mutate(mutationRate, _gen, _startId, _destinationId, _graph);
 
                 // Add the new child regardless of validity (selection will handle it)
@@ -276,54 +276,6 @@ const Route& Population::getBestSolution() const {
         throw std::runtime_error("Error: Could not determine best solution (max_element failed).");
     }
     return *best_it;
-}
-
-
-// Crossover function (single-point based on common station)
-Route Population::crossover(const Route& parent1, const Route& parent2, std::mt19937& gen) {
-    const auto& visited1 = parent1.getVisitedStations();
-    const auto& visited2 = parent2.getVisitedStations();
-
-    // Basic checks for valid crossover
-    if (visited1.size() <= 2 || visited2.size() <= 2) {
-        // Not enough intermediate points, return one parent (e.g., the first one)
-        return parent1;
-    }
-
-    // Find common intermediate stations
-    std::vector<std::pair<size_t, size_t>> commonIndices;
-    for (size_t i = 1; i < visited1.size() - 1; ++i) { // Exclude start/end
-        for (size_t j = 1; j < visited2.size() - 1; ++j) { // Exclude start/end
-            // Use Station's operator==
-            if (visited1[i].station == visited2[j].station) {
-                commonIndices.push_back({ i, j });
-            }
-        }
-    }
-
-    if (!commonIndices.empty()) {
-        // Choose a random common station pair
-        std::uniform_int_distribution<> common_dis(0, static_cast<int>(commonIndices.size() - 1));
-        auto [idx1, idx2] = commonIndices[common_dis(gen)]; // Indices in parent1 and parent2
-
-        // Create child route by combining segments
-        Route childRoute;
-        // Segment from parent1 up to (and including) the common station
-        for (size_t k = 0; k <= idx1; ++k) {
-            childRoute.addVisitedStation(visited1[k]);
-        }
-        // Segment from parent2 *after* the common station to the end
-        for (size_t k = idx2 + 1; k < visited2.size(); ++k) {
-            childRoute.addVisitedStation(visited2[k]);
-        }
-        // Note: Validity of the child is not guaranteed here, depends on connections at the crossover point.
-        return childRoute;
-    }
-    else {
-        // Fallback: No common intermediate station found. Return one parent randomly.
-        std::uniform_int_distribution<> parent_choice(0, 1);
-        return (parent_choice(gen) == 0) ? parent1 : parent2;
-    }
 }
 
 

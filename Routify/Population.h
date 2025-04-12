@@ -13,8 +13,6 @@ public:
     void evolve(int generations, double mutationRate);
     const Route& getBestSolution() const;
 
-    static Route crossover(const Route& parent1, const Route& parent2, std::mt19937& gen);
-
     void performSelection();
 
     std::vector<Route> getRoutes() const;
@@ -29,7 +27,4 @@ private:
     Utilities::Coordinates _destCoords;
 
     std::mt19937 _gen;
-
-    // Renamed and logic changed
-    Route generateGuidedRandomRoute(std::mt19937& gen) const;
 };
