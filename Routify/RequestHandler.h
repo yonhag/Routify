@@ -62,8 +62,7 @@ private:
 
     // Updated/New helpers
     void selectRepresentativeStations(double centerLat, double centerLon, const StationList& allNearby, StationList& selected);
-    std::optional<StationPair> selectClosestStation(double centerLat, double centerLon, const StationList& allNearby); // New
-    void logSelectedStations(const StationList& selected, const std::string& type); // Updated signature
+    std::optional<StationPair> selectClosestStation(double centerLat, double centerLon, const StationList& allNearby); 
 
     // Updated helper for finding best route
     std::optional<BestRouteResult> findBestRouteToDestination( // Renamed
@@ -75,6 +74,11 @@ private:
     double runGAForPair(int startId, int endId, const CoordinateRouteInput& gaParams, Route& outBestRoute) const;
     json formatRouteResponse(const BestRouteResult& bestResult);
     static RequestHandler::GaTaskResult runSingleGaTask(int startId, int endId, const RequestHandler::CoordinateRouteInput& gaParams, const Graph& graph);
+    static std::vector<Graph::Station> reconstructIntermediateStops(
+        int segmentStartCode,
+        int segmentEndCode,
+        const std::string& lineId,
+        const Graph& graph);
 
 
     // Member Variables

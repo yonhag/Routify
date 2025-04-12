@@ -168,7 +168,6 @@ json RequestHandler::handleFindRouteCoordinates(const json& request_json) {
     if (selectedStartStations.empty()) {
         return { {"error", "Failed to select any representative start stations (initial list empty?)"} };
     }
-    logSelectedStations(selectedStartStations, "Start"); // Updated logging call
 
     // 4. Select ONLY the CLOSEST END Station
     std::optional<StationPair> closestEndStationOpt = selectClosestStation(inputData.endLat, inputData.endLong, allFoundStations.endStations);
@@ -176,7 +175,6 @@ json RequestHandler::handleFindRouteCoordinates(const json& request_json) {
         return { {"error", "Failed to select the closest end station (no nearby end stations found?)"} };
     }
     const StationPair& closestEndStationPair = closestEndStationOpt.value(); // Get the pair
-    logSelectedStations({ closestEndStationPair }, "End (Closest Only)"); // Log the single station
 
     // 5. Find Best Route Among SELECTED Start Stations and SINGLE End Station
     std::optional<BestRouteResult> bestResult = findBestRouteToDestination(
@@ -425,93 +423,116 @@ std::optional<RequestHandler::BestRouteResult> RequestHandler::findBestRouteToDe
 json RequestHandler::formatRouteResponse(const BestRouteResult& bestResult) {
     json resultJson;
     try {
-        resultJson["from_station"] = { {"code", bestResult.startStationId}, {"name", _graph.getStationById(bestResult.startStationId).name} };
-        resultJson["to_station"] = { {"code", bestResult.endStationId}, {"name", _graph.getStationById(bestResult.endStationId).name} };
+        // Use the stored start/end station IDs from BestRouteResult
+        const Graph::Station& startStation = _graph.getStationById(bestResult.startStationId);
+        const Graph::Station& endStation = _graph.getStationById(bestResult.endStationId);
+        resultJson["from_station"] = { {"code", bestResult.startStationId}, {"name", startStation.name} };
+        resultJson["to_station"] = { {"code", bestResult.endStationId}, {"name", endStation.name} };
     }
     catch (const std::exception& e) {
         return { {"error", "Internal error: Failed to lookup best station names"}, {"details", e.what()} };
     }
 
-    const auto& visitedStations = bestResult.route.getVisitedStations();
+    const auto& visitedStations = bestResult.route.getVisitedStations(); // These are the ACTION points
 
     resultJson["status"] = "Route found";
     resultJson["summary"] = {
         {"fitness", bestResult.fitness},
         {"time_mins", bestResult.route.getTotalTime()},
         {"cost", bestResult.route.getTotalCost()},
+        // Make sure getTransferCount() is updated as per previous discussion
         {"transfers", bestResult.route.getTransferCount()}
     };
 
-    json steps = json::array();
+    json detailedStepsJson = json::array(); // Rename to avoid confusion
 
-    if (visitedStations.size() < 2) {
-        // Handle trivial route (start == end, though this case might be filtered earlier)
-        if (!visitedStations.empty()) {
-            json step;
-            step["action"] = "Arrive";
-            step["at"] = visitedStations[0].station.name;
-            step["lat"] = visitedStations[0].station.latitude;
-            step["long"] = visitedStations[0].station.longitude;
-            step["is_action_point"] = true; // Start/end is an action point
-            steps.push_back(step);
-        }
-    }
-    else {
-        // Iterate through ALL segments (pairs of consecutive stations)
+    if (visitedStations.size() >= 2) {
         for (size_t i = 0; i < visitedStations.size() - 1; ++i) {
-            const auto& currentVs = visitedStations[i];     // Departure station for this segment
-            const auto& nextVs = visitedStations[i + 1]; // Arrival station for this segment
-            const auto& lineTaken = nextVs.line;         // Line taken FROM current TO next
+            const auto& currentVs = visitedStations[i];     // Action point where segment starts
+            const auto& nextVs = visitedStations[i + 1];    // Action point where segment ends
+            const auto& lineTaken = nextVs.line;            // Line taken for this segment
 
-            json step;
-            step["segment_index"] = i; // Add segment index for frontend clarity
-            step["line_id"] = lineTaken.id; // Include line ID ("Walk", "Start", or actual ID)
+            // --- Get Codes for this Segment ---
+            // Code of the station where this segment *actually* starts
+            int segmentStartCode = (i == 0) ? bestResult.startStationId : visitedStations[i].line.to;
+            // Code of the station where this segment *actually* ends
+            int segmentEndCode = nextVs.line.to;
 
-            // Departure Point
-            step["from_name"] = currentVs.station.name;
-            step["from_code"] = (i == 0) ? bestResult.startStationId : currentVs.line.to; // Get code carefully
-            step["from_lat"] = currentVs.station.latitude;
-            step["from_long"] = currentVs.station.longitude;
+            json stepJson; // JSON object for this segment
+            stepJson["segment_index"] = i;
+            stepJson["line_id"] = lineTaken.id;
 
-            // Arrival Point
-            step["to_name"] = nextVs.station.name;
-            step["to_code"] = nextVs.line.to; // The code of the station arrived at
-            step["to_lat"] = nextVs.station.latitude;
-            step["to_long"] = nextVs.station.longitude;
+            // --- Action Point Info (Departure) ---
+            const Graph::Station& fromStation = _graph.getStationById(segmentStartCode); // Get station object
+            stepJson["from_name"] = fromStation.name;
+            stepJson["from_code"] = segmentStartCode;
+            stepJson["from_lat"] = fromStation.latitude;
+            stepJson["from_long"] = fromStation.longitude;
 
-            // Determine if the endpoints are "action points" (start, end, transfer)
-            bool isStartPoint = (i == 0);
-            bool isEndPoint = (i == visitedStations.size() - 2); // Is this the *last segment*?
-            bool isTransferPoint = false;
-            // Check if a line change happens *at the arrival station* of this segment (nextVs)
-            if (!isEndPoint) { // Only check for transfers if not the very last station
-                const auto& lineAfterNext = visitedStations[i + 2].line; // Line taken AFTER arriving at nextVs
-                // Different lines, excluding Walk/Start transitions
-                if (lineTaken.id != lineAfterNext.id &&
-                    lineTaken.id != "Walk" && lineTaken.id != "Start" &&
-                    lineAfterNext.id != "Walk" && lineAfterNext.id != "Start")
-                {
-                    isTransferPoint = true;
+            // --- Action Point Info (Arrival) ---
+            const Graph::Station& toStation = _graph.getStationById(segmentEndCode); // Get station object
+            stepJson["to_name"] = toStation.name;
+            stepJson["to_code"] = segmentEndCode;
+            stepJson["to_lat"] = toStation.latitude;
+            stepJson["to_long"] = toStation.longitude;
+
+            // --- Reconstruct and Add Intermediate Stops ---
+            bool isPublic = lineTaken.id != "Walk" && lineTaken.id != "Start"; // Check if public transport
+            json intermediateStopsJson = json::array(); // Array for intermediate stops of *this* segment
+
+            if (isPublic && segmentStartCode != segmentEndCode) {
+                std::vector<Graph::Station> intermediateStations = reconstructIntermediateStops(
+                    segmentStartCode,
+                    segmentEndCode,
+                    lineTaken.id,
+                    _graph); // Pass the graph by const reference
+
+                for (const auto& interStation : intermediateStations) {
+                    intermediateStopsJson.push_back({
+                        {"code", _graph.getStationIdByName(interStation.name)}, // Need a way to get ID back - might need graph changes or store ID in Station
+                        {"name", interStation.name},
+                        {"lat", interStation.latitude},
+                        {"long", interStation.longitude}
+                        });
                 }
             }
+            stepJson["intermediate_stops"] = intermediateStopsJson; // Add intermediates to the step object
 
-            // Mark stations requiring action
-            step["from_is_action_point"] = isStartPoint; // Start is always an action point
-            step["to_is_action_point"] = isEndPoint || isTransferPoint; // End or Transfer points require action
+            // --- Action Point Logic (same as before) ---
+            bool isStartPoint = (i == 0);
+            bool isEndPoint = (i == visitedStations.size() - 2);
+            bool isTransferPoint = false;
+            if (!isEndPoint && visitedStations.size() > i + 2) {
+                const auto& lineAfterNext = visitedStations[i + 2].line;
+                // Use the transfer logic from getTransferCount or adapt it
+                bool currentIsPublic = lineTaken.id != "Walk" && lineTaken.id != "Start";
+                bool nextIsPublic = lineAfterNext.id != "Walk" && lineAfterNext.id != "Start";
+                if (currentIsPublic && nextIsPublic && lineTaken.id != lineAfterNext.id) {
+                    isTransferPoint = true; // Bus/Train -> Different Bus/Train
+                }
+                else if (currentIsPublic && !nextIsPublic && lineAfterNext.id != "Start") {
+                    isTransferPoint = true; // Bus/Train -> Walk
+                }
+                else if (!currentIsPublic && currentVs.line.id != "Start" && nextIsPublic) {
+                    isTransferPoint = true; // Walk -> Bus/Train
+                }
+                // This simplified logic might slightly differ from getTransferCount, ensure consistency if needed
+            }
 
-            // Add action description (optional but helpful for frontend)
-            if (isStartPoint) { step["action_description"] = "Depart"; }
-            else if (isTransferPoint) { step["action_description"] = "Transfer here"; }
-            else if (isEndPoint) { step["action_description"] = "Arrive"; }
-            else { step["action_description"] = "Pass through"; } // Passing through station
+            stepJson["from_is_action_point"] = isStartPoint || isTransferPoint; // Start or arrival point of a transfer-inducing segment
+            stepJson["to_is_action_point"] = isEndPoint || isTransferPoint;   // End or departure point of a transfer-inducing segment
 
-            steps.push_back(step);
-        } // End loop through segments
-    } // End if/else trivial route
+            // Determine action description based on context
+            if (isStartPoint) stepJson["action_description"] = "Depart";
+            else if (isTransferPoint && i > 0) stepJson["action_description"] = "Transfer"; // Transfer occurs *at* the start of this segment (end of previous)
+            else if (isEndPoint) stepJson["action_description"] = "Arrive";
+            else stepJson["action_description"] = "Continue on " + lineTaken.id; // Or "Pass through"
 
-    resultJson["detailed_steps"] = steps; // Use a new key for clarity
-    // Keep the old 'steps' format for compatibility, or remove it if frontend is fully updated
-    // resultJson["steps"] = generateSimplifiedSteps(visitedStations); // Optional: generate old format too
+            detailedStepsJson.push_back(stepJson);
+        }
+    }
+
+    resultJson["detailed_steps"] = detailedStepsJson;
 
     return resultJson;
 }
@@ -550,14 +571,17 @@ std::optional<RequestHandler::StationPair> RequestHandler::selectClosestStation(
 
 void RequestHandler::selectRepresentativeStations(
     double centerLat, double centerLon,
-    const StationList& allNearby, // Input: all nearby stations
-    StationList& selected)        // Output: the selected stations
+    const StationList& allNearby, // Input: all nearby stations found
+    StationList& selected)        // Output: the selected stations (up to 3)
 {
     selected.clear();
-    if (allNearby.empty()) return;
+    if (allNearby.empty()) {
+        std::cerr << "Warning: No nearby stations provided to selectRepresentativeStations." << std::endl;
+        return;
+    }
 
-    // Calculate distance for each station FROM THE EXACT COORDINATE
-    std::vector<std::pair<double, std::pair<int, Graph::Station>>> stationsWithDistance;
+    // Calculate distance for each station FROM THE USER'S EXACT COORDINATE
+    std::vector<std::pair<double, StationPair>> stationsWithDistance;
     stationsWithDistance.reserve(allNearby.size());
     for (const auto& stationPair : allNearby) {
         double dist = Utilities::calculateHaversineDistance(
@@ -566,45 +590,194 @@ void RequestHandler::selectRepresentativeStations(
         stationsWithDistance.push_back({ dist, stationPair });
     }
 
-    // Sort by distance (ascending)
+    // Sort by distance to user (ascending)
     std::sort(stationsWithDistance.begin(), stationsWithDistance.end(),
         [](const auto& a, const auto& b) {
             return a.first < b.first;
         });
 
-    // Select up to 3 stations: closest, mid, furthest
-    std::unordered_set<int> selectedIds; // Use a set to avoid duplicates if mid == closest/furthest
+    // --- Selection Logic ---
+    std::unordered_set<int> selectedIds; // Keep track to avoid duplicates
 
-    // 1. Closest
-    if (!stationsWithDistance.empty()) {
-        selected.push_back(stationsWithDistance[0].second);
-        selectedIds.insert(stationsWithDistance[0].second.first); // Add ID to set
+    // 1. Select Closest to User (S_1)
+    const StationPair& closestStationPair = stationsWithDistance[0].second;
+    selected.push_back(closestStationPair);
+    selectedIds.insert(closestStationPair.first);
+    std::cout << "  Selected S1 (Closest): ID " << closestStationPair.first << " (Dist: " << stationsWithDistance[0].first << ")" << std::endl;
+
+
+    // Handle cases with fewer than 3 stations
+    if (stationsWithDistance.size() == 1) {
+        return; // Only one station, we're done
     }
 
-    // 2. Midrange (only if size > 1)
-    if (stationsWithDistance.size() > 1) {
-        size_t midIndex = stationsWithDistance.size() / 2; // Integer division gives floor
-        // Check if this ID hasn't already been selected
-        if (selectedIds.find(stationsWithDistance[midIndex].second.first) == selectedIds.end()) {
-            selected.push_back(stationsWithDistance[midIndex].second);
-            selectedIds.insert(stationsWithDistance[midIndex].second.first);
+    // 2. Select Furthest from User (S_N) - if different from S_1
+    const StationPair& furthestStationPair = stationsWithDistance.back().second;
+    if (selectedIds.find(furthestStationPair.first) == selectedIds.end()) {
+        selected.push_back(furthestStationPair);
+        selectedIds.insert(furthestStationPair.first);
+        std::cout << "  Selected SN (Furthest): ID " << furthestStationPair.first << " (Dist: " << stationsWithDistance.back().first << ")" << std::endl;
+    }
+    else {
+        std::cout << "  SN (Furthest) is the same as S1, skipping." << std::endl;
+    }
+
+
+    // Handle cases with exactly 2 unique stations
+    if (selected.size() < 2 && stationsWithDistance.size() >= 2) {
+        // If furthest was same as closest, add the second closest if it exists and is unique
+        const StationPair& secondClosest = stationsWithDistance[1].second;
+        if (selectedIds.find(secondClosest.first) == selectedIds.end()) {
+            selected.push_back(secondClosest);
+            selectedIds.insert(secondClosest.first);
+            std::cout << "  Selected S2 (Second Closest) as fallback for SN: ID " << secondClosest.first << std::endl;
         }
     }
 
-    // 3. Furthest (only if size > 2 and different from closest/mid)
-    if (stationsWithDistance.size() > 2) { // Need at least 3 distinct stations for 3 selections
-        // Check if the last station's ID hasn't already been selected
-        if (selectedIds.find(stationsWithDistance.back().second.first) == selectedIds.end()) {
-            selected.push_back(stationsWithDistance.back().second);
-            // No need to add to selectedIds set anymore as we're done
+
+    if (stationsWithDistance.size() < 3 || selected.size() >= 3) {
+        // Need at least 3 distinct stations total to find a 3rd unique representative,
+        // or we already have 3 selected (e.g. S1, SN, S2 were all unique)
+        return;
+    }
+
+
+    // 3. Select "Most Different" Intermediate (S_k)
+    // Find the station between index 1 and size-2 (exclusive ends)
+    // that is furthest from S_1 (closestStationPair)
+
+    int best_Sk_index = -1;
+    double max_dist_from_S1 = -1.0;
+
+    // Iterate through the stations *excluding* the already selected closest (S1) and furthest (SN)
+    // indices considered: 1 to stationsWithDistance.size() - 2
+    for (size_t i = 1; i < stationsWithDistance.size() - 1; ++i) {
+        const StationPair& candidate_Sk_pair = stationsWithDistance[i].second;
+
+        // Ensure this candidate hasn't already been selected (e.g., if SN was index 1)
+        if (selectedIds.find(candidate_Sk_pair.first) != selectedIds.end()) {
+            continue; // Skip already selected stations
+        }
+
+        // Calculate distance between this candidate (Si) and the closest station (S1)
+        double dist_S1_Si = Utilities::calculateHaversineDistance(
+            closestStationPair.second.latitude, closestStationPair.second.longitude,
+            candidate_Sk_pair.second.latitude, candidate_Sk_pair.second.longitude
+        );
+
+        if (dist_S1_Si > max_dist_from_S1) {
+            max_dist_from_S1 = dist_S1_Si;
+            best_Sk_index = static_cast<int>(i);
         }
     }
-    // Note: If size is 1 or 2, selected will contain just 1 or 2 stations.
-    // If size is 3+, it will contain 3 unless mid/furthest were duplicates of closest.
-}
 
-void RequestHandler::logSelectedStations(const StationList& selected, const std::string& type) {
-    std::cout << "Selected " << type << " Stations (" << selected.size() << "): ";
-    for (const auto& p : selected) std::cout << p.first << " "; // p.first is the ID
-    std::cout << std::endl;
+    // Add the best S_k found, if any
+    if (best_Sk_index != -1) {
+        const StationPair& Sk_pair = stationsWithDistance[best_Sk_index].second;
+        // Final check for uniqueness (should be redundant due to loop check, but safe)
+        if (selectedIds.find(Sk_pair.first) == selectedIds.end()) {
+            selected.push_back(Sk_pair);
+            selectedIds.insert(Sk_pair.first); // Add to set, though not strictly needed now
+            std::cout << "  Selected SK (Most Different from S1): ID " << Sk_pair.first << " (Dist from S1: " << max_dist_from_S1 << ")" << std::endl;
+        }
+        else {
+            std::cout << "  SK candidate ID " << Sk_pair.first << " was already selected?" << std::endl;
+        }
+
+    }
+    else if (selected.size() < 3) {
+        // Fallback if no suitable Sk was found (e.g., only 2 unique stations nearby, or all intermediates were already selected)
+        // Try adding the second closest if it wasn't SN and hasn't been added yet.
+        if (stationsWithDistance.size() >= 2) {
+            const StationPair& secondClosest = stationsWithDistance[1].second;
+            if (selectedIds.find(secondClosest.first) == selectedIds.end()) {
+                selected.push_back(secondClosest);
+                // selectedIds.insert(secondClosest.first); // Not needed as we exit
+                std::cout << "  Selected S2 (Second Closest) as fallback for SK: ID " << secondClosest.first << std::endl;
+            }
+        }
+    }
+
+    // Ensure we don't exceed 3 selections (shouldn't happen with the logic, but as a safeguard)
+    if (selected.size() > 3) {
+        selected.resize(3);
+    }
+
+} // End of selectRepresentativeStations
+
+std::vector<Graph::Station> RequestHandler::reconstructIntermediateStops(
+    int segmentStartCode,
+    int segmentEndCode,
+    const std::string& lineId,
+    const Graph& graph)
+{
+    std::vector<Graph::Station> intermediatePath;
+    std::unordered_set<int> visitedInSegment; // Prevent infinite loops in case of cycles
+
+    int currentCode = segmentStartCode;
+    visitedInSegment.insert(currentCode);
+
+    const int MAX_INTERMEDIATE_STEPS = 100; // Safety limit
+    int steps = 0;
+
+    while (currentCode != segmentEndCode && steps < MAX_INTERMEDIATE_STEPS) {
+        steps++;
+        bool foundNext = false;
+        try {
+            const auto& linesFromCurrent = graph.getLinesFrom(currentCode);
+            const Graph::TransportationLine* nextLine = nullptr;
+
+            // Find the specific line ID going towards *any* next station
+            for (const auto& line : linesFromCurrent) {
+                if (line.id == lineId) {
+                    // Basic check: Just take the first match for this line ID.
+                    // More sophisticated: Check arrival times? Requires knowing departure time... complex.
+                    // Simplest approach: Assume there's only one 'lineId' edge relevant here.
+                    if (visitedInSegment.find(line.to) == visitedInSegment.end()) {
+                        nextLine = &line;
+                        break; // Take the first valid, unvisited 'to' for this line ID
+                    }
+                    // If the only way is back to a visited node (or the target), consider it
+                    else if (line.to == segmentEndCode) {
+                        nextLine = &line; // Allow going to the target even if visited (shouldn't happen often)
+                        break;
+                    }
+                }
+            }
+
+            if (nextLine != nullptr) {
+                currentCode = nextLine->to;
+                visitedInSegment.insert(currentCode);
+                // Add the station *arrived at* (unless it's the final segment end)
+                if (currentCode != segmentEndCode) {
+                    intermediatePath.push_back(graph.getStationById(currentCode));
+                }
+                foundNext = true;
+            }
+            else {
+                // Couldn't find the next step for this line ID from current station
+                std::cerr << "Warning: reconstructIntermediateStops failed to find next stop for line "
+                    << lineId << " from station " << currentCode << std::endl;
+                break; // Stop reconstruction for this segment
+            }
+
+        }
+        catch (const std::exception& e) {
+            std::cerr << "Warning: Exception during reconstructIntermediateStops: " << e.what() << std::endl;
+            break; // Stop reconstruction on error
+        }
+        if (!foundNext) break; // Break if no next step was identified
+    }
+
+    if (steps >= MAX_INTERMEDIATE_STEPS) {
+        std::cerr << "Warning: reconstructIntermediateStops hit max steps limit for line " << lineId
+            << " from " << segmentStartCode << " to " << segmentEndCode << std::endl;
+    }
+    if (currentCode != segmentEndCode && steps < MAX_INTERMEDIATE_STEPS) {
+        std::cerr << "Warning: reconstructIntermediateStops did not reach segment end " << segmentEndCode
+            << " for line " << lineId << " from " << segmentStartCode << std::endl;
+    }
+
+
+    return intermediatePath;
 }

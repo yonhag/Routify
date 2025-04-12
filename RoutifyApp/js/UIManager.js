@@ -129,7 +129,6 @@ class UIManager {
             });
     } // End of requestRoute
 
-    // ... handleMapClick and setupEventListeners remain the same ...
     handleMapClick(latlng) {
         if (!latlng) return;
 
@@ -139,6 +138,8 @@ class UIManager {
         const confirmationMessage = `Navigate to coordinates: ${latStr}, ${lngStr}?`;
         if (confirm(confirmationMessage)) {
             console.log("User confirmed navigation to:", latlng);
+            this.markerManager.clearDestinationMarker();
+            this.markerManager.addDestinationMarker(latlng.lat, latlng.lng);     
             this.requestRoute(latlng);
         } else {
             console.log("User cancelled navigation.");

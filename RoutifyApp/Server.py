@@ -18,7 +18,6 @@ JS_DIR = os.path.join(APP_ROOT, 'js')
 @app.route('/')
 def index():
     # ... (existing code) ...
-    print(f"Serving index.html from: {APP_ROOT}")
     try: return send_from_directory(APP_ROOT, 'index.html')
     except FileNotFoundError: abort(404, description="index.html not found")
 
@@ -48,7 +47,6 @@ def serve_files(filename):
 
     # --- Check if file exists and serve ---
     if os.path.exists(safe_path) and os.path.isfile(safe_path):
-        print(f"Serving file: {safe_path}")
         try:
             mimetype, _ = mimetypes.guess_type(safe_path)
             if file_to_serve.endswith('.js'):
