@@ -7,7 +7,7 @@ import mimetypes
 
 CPP_BACKEND_HOST = 'localhost'
 CPP_BACKEND_PORT = 8200
-SOCKET_TIMEOUT = 180.0 # <--- USE THIS TIMEOUT
+SOCKET_TIMEOUT = 360.0
 SOCKET_BUFFER_SIZE = 4096
 
 app = Flask(__name__, static_folder=None)
@@ -17,7 +17,6 @@ JS_DIR = os.path.join(APP_ROOT, 'js')
 # --- File Serving Routes ---
 @app.route('/')
 def index():
-    # ... (existing code) ...
     try: return send_from_directory(APP_ROOT, 'index.html')
     except FileNotFoundError: abort(404, description="index.html not found")
 
