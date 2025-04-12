@@ -48,20 +48,15 @@ Graph::Graph() {
 Graph::~Graph() {
 }
 
-void Graph::addStation(int code, const std::string& name, const Utilities::Coordinates& coords) {
+void Graph::addStation(const int code, const std::string& name, const Utilities::Coordinates& coords) {
     if (!coords.isValid()) {
 		std::cout << "Invalid coords for " << code << ": " << coords.latitude << " " << coords.longitude << std::endl;
     }
 
-    // Use the Station constructor that takes Coordinates
     this->_map.emplace(code, Station(name, coords));
 }
 
-int Graph::calculateWeight(double travelTime, double price) const {
-    return static_cast<int>(travelTime + (price * 10));
-}
-
-const std::vector<Graph::TransportationLine>& Graph::getLinesFrom(int nodeId) const {
+const std::vector<Graph::TransportationLine>& Graph::getLinesFrom(const int nodeId) const {
     auto it = this->_map.find(nodeId);
     if (it != this->_map.end())
         return it->second.lines;
@@ -69,7 +64,7 @@ const std::vector<Graph::TransportationLine>& Graph::getLinesFrom(int nodeId) co
     return empty;
 }
 
-const Graph::Station& Graph::getStationById(int id) const
+const Graph::Station& Graph::getStationById(const int id) const
 {
     auto it = _map.find(id);
     if (it == _map.end()) {
@@ -98,26 +93,31 @@ size_t Graph::getStationCount() const
     return this->_map.size();
 }
 
+/*
+* Returns the nearby stations, sorted by distance
+*/
 std::vector<std::pair<int, Graph::Station>> Graph::getNearbyStations(const Utilities::Coordinates& userCoords) const {
+    // Find nearby stations
     std::vector<std::pair<int, Station>> nearbyStations;
     for (const auto& [id, station] : _map) {
-        // Use the updated Haversine function and the coordinates struct from Station
         double distance = Utilities::calculateHaversineDistance(station.coordinates, userCoords);
         if (distance <= this->maxNearbyDistance) {
             nearbyStations.push_back({ id, station });
         }
     }
-    // Optional: Sort nearbyStations by distance
+
+    // Sort by distance
     std::sort(nearbyStations.begin(), nearbyStations.end(),
         [&userCoords](const auto& a, const auto& b) {
             double distA = Utilities::calculateHaversineDistance(a.second.coordinates, userCoords);
             double distB = Utilities::calculateHaversineDistance(b.second.coordinates, userCoords);
             return distA < distB;
         });
+
     return nearbyStations;
 }
 
-std::vector<Graph::Station> Graph::getStationsAlongLineSegment( // Changed return type
+std::vector<Graph::Station> Graph::getStationsAlongLineSegment(
     const std::string& lineId,
     int segmentStartStationId,
     int segmentEndStationId) const
@@ -159,7 +159,7 @@ std::vector<Graph::Station> Graph::getStationsAlongLineSegment( // Changed retur
         try {
             const std::vector<TransportationLine>& linesFromCurrent = getLinesFrom(currentStationId);
 
-            // Find the next hop (same logic as before, finding the line)
+            // Find the next hop, by finding the line
             for (const auto& line : linesFromCurrent) {
                 if (line.id == lineId) {
                     nextHopLine = &line;
@@ -202,18 +202,17 @@ std::vector<Graph::Station> Graph::getStationsAlongLineSegment( // Changed retur
             std::cerr << "Error [getStationsAlongLineSegment]: Exception during trace: " << e.what() << std::endl;
             pathStations.clear(); return pathStations;
         }
-        // No need for explicit !foundNextHop check here as the inner logic handles it
     } // End while loop
 
-    // 3. Final Checks (same as before)
-    if (stepCount >= MAX_STEPS) { /* ... warning, clear, return ... */ }
-    if (currentStationId != segmentEndStationId) { /* ... warning, clear, return ... */ }
+    // 3. Fail
+    if (stepCount >= MAX_STEPS) { throw std::runtime_error("stepCount exceeded MAX_STEPS on Graph.cpp"); }
+    if (currentStationId != segmentEndStationId) { throw std::runtime_error("currentStationId != segmentEndStationId on Graph.cpp"); }
 
     // 4. Success
     return pathStations; // Return vector of Station objects
 }
 
-Graph::Station& Graph::getStationRefById(int id) {
+Graph::Station& Graph::getStationRefById(const int id) {
     auto it = _map.find(id);
     if (it == _map.end()) {
         throw std::out_of_range("Station with the given ID not found");
@@ -234,7 +233,7 @@ void Graph::fetchGTFSStops() {
     }
 
     std::string header;
-    std::getline(file, header); // skip header
+    std::getline(file, header); // Skipping the format header
 
     int i = 0;
     std::string line;
@@ -265,12 +264,12 @@ void Graph::fetchGTFSTransportationLines() {
     std::getline(stopTimesFile, header);
     std::string line;
     int i = 0;
-    int lastId = -1;              // Initialize to an invalid value
+    int lastId = -1;                        // Initialize to an invalid value
     TransportationLine* lastLine = nullptr; // Pointer to the last line in the vector
 
     while (std::getline(stopTimesFile, line)) {
         auto tokens = splitCSV(line);
-        if (tokens.size() < 4) continue;  // Ensure we have enough tokens
+        if (tokens.size() < 4) continue;    // Ensure we have enough tokens
 
         std::string line_code = tokens[0];
         int id = std::stoi(tokens[1]);

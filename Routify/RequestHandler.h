@@ -1,10 +1,9 @@
 #pragma once
 #include "Graph.h"
 #include "Socket.h"
-#include "Route.h" // Include Route header
+#include "Route.h"
 #include "json.hpp"
-#include <vector>   // Include vector
-#include <optional> // Include optional
+#include <optional> 
 
 using json = nlohmann::json;
 
@@ -14,10 +13,10 @@ public:
     void handleRequest(Socket clientSocket);
 
 private:
-    using StationPair = std::pair<int, Graph::Station>; // Added alias for clarity
+    using StationPair = std::pair<int, Graph::Station>;
     using StationList = std::vector<StationPair>;
     
-    // --- Helper Structs (defined within RequestHandler or globally) ---
+    // --- Helper Structs  ---
     struct RequestData {
         Utilities::Coordinates startCoords; // User location
         Utilities::Coordinates endCoords;   // Destination
@@ -55,19 +54,19 @@ private:
     json handleGetLines(const json& request_json);
     json handleGetStationInfo(const json& request_json);
 
-    // Refactored handlers for Type 2
+    // --- Genetic Algorithm Request Helpers ---
     json handleFindRouteCoordinates(const json& request_json); // Top level
     json extractAndValidateCoordinateInput(const json& request_json, RequestData& inputData);
     json findNearbyStationsForRoute(const RequestData& inputData, NearbyStations& foundStations); // Finds ALL nearby
 
 
-    // helper for finding best route
+    // Helper for finding best route
     std::optional<BestRouteResult> findBestRouteToDestination( // Renamed
         const StationList& selectedStartStations,
         const StationPair& endStationPair, // Takes single end station
         const RequestData& gaParams);
 
-    // helpers
+    // Additional Helpers
     std::optional<StationPair> selectClosestStation(double centerLat, double centerLon, const StationList& allNearby); 
     void selectRepresentativeStations(double centerLat, double centerLon, const StationList& allNearby, StationList& selected);
     static RequestHandler::GaTaskResult runSingleGaTask(int startId, int endId, const RequestHandler::RequestData& gaParams, const Graph& graph);

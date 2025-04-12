@@ -1,7 +1,6 @@
 #pragma once
 #define _USE_MATH_DEFINES // For M_PI
 #include <cmath> // For trig functions, sqrt, etc. used in Haversine
-#include <string> // Keep other utilities if needed
 
 // Define M_PI if not available
 #ifndef M_PI

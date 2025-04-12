@@ -1,29 +1,22 @@
-
 #pragma once
-
-#include <vector>
+#include "Graph.h"
 #include <random>
-#include <string> // Include string
-#include "Graph.h" // Ensure Graph is included
 
 class Route {
 public:
     struct VisitedStation {
         Graph::Station station;         // The station object itself
-        Graph::TransportationLine line; // Line taken TO REACH this station
-        int prevStationCode;            // *** ADDED: Code of the station *before* this one ***
+        Graph::TransportationLine line; // Line taken to reach this station
+        int prevStationCode;            // The code of the station before this one
 
-        // Constructor updated
-        VisitedStation(Graph::Station s, Graph::TransportationLine l, int prevCode)
+        VisitedStation(const Graph::Station& s, const Graph::TransportationLine& l, const int prevCode)
             : station(s), line(l), prevStationCode(prevCode) {
         }
 
-        // Default constructor needed if vector operations require it
-        // Note: Initializes prevStationCode to -1 (or another invalid code)
         VisitedStation() : station(), line(), prevStationCode(-1) {}
     };
 
-    // Default constructor
+    // Default constructor.
     Route() = default;
 
     // --- Rule of 5: Explicitly default special members ---
@@ -34,31 +27,53 @@ public:
     ~Route() = default;
     // --- End of Rule of 5 ---
 
+    // Adds a visited station to the object.
     void addVisitedStation(const VisitedStation& vs);
+
+    // Calculates the total time the trip should take.
     double getTotalTime() const;
+
+    // Estimates the total price the trip should cost.
     double getTotalCost(const Graph& graph) const;
+
+    // Returns the transportation.
     int getTransferCount() const;
+    
+    // Returns the visited stations vector.
     const std::vector<VisitedStation> getVisitedStations() const;
 
-    double getFitness(int startId, int destinationId, const Graph& graph,
+    /*
+    * Checks if the route is valid -
+    * If all the stations appear on the graph, and are connected by the same lines mentioned here.
+    */
+    bool isValid(int startId, int destinationId, const Graph& graph) const;
+
+    /*
+    * --- Genetic Algorithm Methods ---
+    */
+
+    // Gives the route a fitness score, describing how good it is at solving the requested problem.
+    double getFitness(const int startId, const int destinationId, const Graph& graph,
         const Utilities::Coordinates& userCoords, // User's actual location
         const Utilities::Coordinates& destCoords) const; // Clicked destination
 
-    bool isValid(int startId, int destinationId, const Graph& graph) const;
-
-    // Static const for walking distance check in validation (if needed)
-    // static const double MAX_WALKING_DISTANCE; // Example: 1.0 km
-
-    // Mutation needs graph access and random generator
+	// Mutates the route by regenerating a segment or replacing it with a walk.
     void mutate(double mutationRate, std::mt19937& gen, int startId, int destinationId, const Graph& graph);
+
+    // Combines two routes together to create a better one
     static Route crossover(const Route& parent1, const Route& parent2, std::mt19937& gen);
+
+    /*
+	*  --- End of Genetic Algorithm Methods ---
+    */
 
     // Helper for mutation (consider making private or moving logic)
     static bool generatePathSegment(int segmentStartId, int segmentEndId, const Graph& graph, std::mt19937& gen, std::vector<VisitedStation>& segment);
 
 private:
+	// Calculates walk time between two coordinates based on WALK_SPEED_KPH
     double calculateWalkTime(const Utilities::Coordinates& c1, const Utilities::Coordinates& c2) const;
 
-    const static double WALK_SPEED_KPH;
+	const static double WALK_SPEED_KPH; // defined in Route.cpp
     std::vector<VisitedStation> _stations;
 };

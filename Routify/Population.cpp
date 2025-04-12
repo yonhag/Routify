@@ -3,13 +3,10 @@
 #include <random>
 #include <stdexcept>
 #include <iostream>
-#include <vector>
 #include <numeric>
 #include <limits>
 #include <unordered_set>
 #include <queue>
-#include <unordered_map>
-#include <string> // Needed for string ID in BfsNode
 
 
 // --- BFS Pathfinding Implementation (Modified Reconstruction) ---
@@ -112,7 +109,7 @@ namespace {
 } // end anonymous namespace
 
 // --- Population Constructor (No changes needed here, uses the fixed BFS) ---
-Population::Population(int size, int startId, int destinationId, const Graph& graph,
+Population::Population(const int size, const int startId, const int destinationId, const Graph& graph,
     const Utilities::Coordinates& userCoords,
     const Utilities::Coordinates& destCoords)
     : _graph(graph), _startId(startId), _destinationId(destinationId),
@@ -171,7 +168,7 @@ Population::Population(int size, int startId, int destinationId, const Graph& gr
 // --- Population Evolution Methods ---
 
 // Evolves the population
-void Population::evolve(int generations, double mutationRate) {
+void Population::evolve(const int generations, const double mutationRate) {
     if (_routes.empty()) {
         std::cerr << "Cannot evolve initial empty population." << std::endl;
         return;

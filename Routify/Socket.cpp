@@ -44,7 +44,7 @@ bool Socket::sendMessage(const std::string& message) const {
     return sent != SOCKET_ERROR;
 }
 
-std::string Socket::receiveMessage(int bufferSize) const {
+std::string Socket::receiveMessage(const int bufferSize) const {
     if (!isValid())
         return "";
     char* buffer = new char[bufferSize + 1];

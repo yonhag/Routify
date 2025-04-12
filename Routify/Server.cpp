@@ -5,7 +5,7 @@
 #include <ws2tcpip.h>
 
 
-Server::Server(int port)
+Server::Server(const int port)
     : serverSocket(),  // Creates a TCP socket using Socket's default constructor
     port(port),
     running(false)

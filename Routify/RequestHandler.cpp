@@ -2,19 +2,13 @@
 #include "Population.h"
 #include "Utilities.hpp"
 #include <iostream>
-#include "json.hpp" // nlohmann/json
 #include <stdexcept>
-#include <string>
-#include <vector>
 #include <limits>
 #include <algorithm>
-#include <optional> // For optional return
 #include <unordered_set>
 #include <thread>
 #include <future>
 
-
-// Use nlohmann::json namespace
 using json = nlohmann::json;
 
 static void to_json(json& j, const Graph::Station& p) {
@@ -25,11 +19,8 @@ static void to_json(json& j, const Graph::Station& p) {
     };
 }
 
-// --- RequestHandler Implementation ---
-
 RequestHandler::RequestHandler() : _graph() {}
 
-// Main handler function (remains mostly the same, calls refactored function for type 2)
 void RequestHandler::handleRequest(Socket clientSocket)
 {
     std::string response_str;
@@ -50,7 +41,7 @@ void RequestHandler::handleRequest(Socket clientSocket)
         switch (type) {
         case 0: response_json = handleGetLines(request_json); break;
         case 1: response_json = handleGetStationInfo(request_json); break;
-        case 2: response_json = handleFindRouteCoordinates(request_json); break; // Calls the refactored top-level handler
+        case 2: response_json = handleFindRouteCoordinates(request_json); break;
         default: response_json = { {"error", "Invalid request type"} }; break;
         }
         response_str = response_json.dump(2);

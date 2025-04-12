@@ -1,16 +1,12 @@
 #include "Route.h"
-#include "Graph.h" // Required for Graph types and access
+#include "Graph.h"
 #include "Utilities.hpp"
 #include <iostream>
-#include <cstdlib>
 #include <ctime>
-#include <algorithm> // For std::sort, std::max
-#include <stdexcept> // For exceptions
-#include <cmath>     // For M_PI, trig functions, abs, sqrt, atan2
-#include <limits>    // For numeric_limits
-#include <numeric>   // For std::accumulate
-#include <vector>    // Explicit include
-#include <unordered_set> // For visited checks in segment generation
+#include <algorithm>
+#include <stdexcept>
+#include <limits>
+#include <unordered_set>
 
 const double Route::WALK_SPEED_KPH = 5.0;
 
@@ -226,7 +222,6 @@ bool Route::isValid(int startId, int destinationId, const Graph& graph) const {
         try {
             // Use the reliable prev_station_code
             if (!graph.hasStation(prev_station_code)) { // Double check prev code exists
-                // Optional Debug: std::cerr << "isValid Fail (Step " << i << "): Prev station code " << prev_station_code << " not in graph." << std::endl;
                 return false;
             }
             const auto& lines_from_prev = graph.getLinesFrom(prev_station_code);
@@ -240,8 +235,6 @@ bool Route::isValid(int startId, int destinationId, const Graph& graph) const {
         catch (const std::out_of_range&) { return false; } // Error getting lines
 
         if (!line_found_at_source) {
-            // Optional Debug: std::cerr << "isValid Fail (Step " << i << "): Line '" << line_taken.id << "' to " << current_station_code
-            //           << " not found at source " << prev_station_code << "." << std::endl;
             return false;
         }
     } // End transition check loop

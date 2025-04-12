@@ -1,13 +1,12 @@
 #pragma once
-#include <thread>
-#include <vector>
+#include "Socket.h"
 #include "RequestHandler.h"
-#include "Socket.h"  // Include the Socket class
+#include <thread>
 
 class Server {
 public:
     // Constructor takes the port number.
-    Server(int port);
+    Server(const int port);
 
     // Destructor cleans up resources.
     virtual ~Server();
@@ -16,7 +15,7 @@ public:
     void start();
 
 private:
-    // Our server socket wrapped in the Socket class.
+    // Server socket wrapped in the Socket class.
     Socket serverSocket;
     int port;
     bool running;

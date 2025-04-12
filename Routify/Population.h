@@ -1,16 +1,14 @@
 #pragma once
-
 #include "Route.h"
 #include "Graph.h"
-#include <vector>
 #include <random>
 
 class Population {
 public:
-    Population(int size, int startId, int destinationId, const Graph& graph,
+    Population(const int size, const int startId, const int destinationId, const Graph& graph,
         const Utilities::Coordinates& userCoords,
         const Utilities::Coordinates& destCoords);
-    void evolve(int generations, double mutationRate);
+    void evolve(const int generations, const double mutationRate);
     const Route& getBestSolution() const;
 
     void performSelection();

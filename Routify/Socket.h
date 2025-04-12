@@ -19,7 +19,7 @@ public:
 
     // Receive a message from the socket.
     // The bufferSize parameter sets the maximum number of bytes to receive.
-    std::string receiveMessage(int bufferSize = 1024) const;
+    std::string receiveMessage(const int bufferSize = 1024) const;
 
     // Retrieve the underlying socket descriptor.
     SOCKET getSocketDescriptor() const;
