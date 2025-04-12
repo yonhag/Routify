@@ -13,10 +13,10 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
     request = {
         'type': 2,
         'stationId': 39105,
-        'startStationId': 39105,  # Gur Shazar
-        'destStationId': 10268,   # Begin Azrieli
+        'startStationId': 30042,  # Gur Shazar
+        'destStationId': 30136,   # Begin Azrieli
         'gen': 200,
-        'mut': 0.1,
+        'mut': 0.5,
         'pop': 20
     }
 

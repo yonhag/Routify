@@ -15,11 +15,11 @@ public:
     bool isValid() const;
 
     // Send a message over the socket.
-    bool sendMessage(const std::string& message);
+    bool sendMessage(const std::string& message) const;
 
     // Receive a message from the socket.
     // The bufferSize parameter sets the maximum number of bytes to receive.
-    std::string receiveMessage(int bufferSize = 1024);
+    std::string receiveMessage(int bufferSize = 1024) const;
 
     // Retrieve the underlying socket descriptor.
     SOCKET getSocketDescriptor() const;

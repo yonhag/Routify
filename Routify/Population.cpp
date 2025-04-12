@@ -1,9 +1,7 @@
-#define _USE_MATH_DEFINES // For M_PI
 #include "Population.h"
 #include <algorithm>
 #include <random>
 #include <stdexcept>
-#include <cmath>
 #include <iostream>
 #include <vector>
 #include <numeric>
@@ -12,22 +10,6 @@
 #include <queue>
 #include <unordered_map>
 #include <string> // Needed for string ID in BfsNode
-
-// Haversine function...
-static double calculateHaversineDistance(double lat1, double lon1, double lat2, double lon2) {
-    const double R = 6371.0;
-    if (abs(lat1 - lat2) < 1e-9 && abs(lon1 - lon2) < 1e-9) { return 0.0; }
-    double dLat = (lat2 - lat1) * M_PI / 180.0;
-    double dLon = (lon2 - lon1) * M_PI / 180.0;
-    lat1 = lat1 * M_PI / 180.0; lat2 = lat2 * M_PI / 180.0;
-    double a = sin(dLat / 2) * sin(dLat / 2) + cos(lat1) * cos(lat2) * sin(dLon / 2) * sin(dLon / 2);
-    if (a < 0.0) a = 0.0; if (a > 1.0) a = 1.0;
-    double c = 2 * atan2(sqrt(a), sqrt(1.0 - a));
-    return R * c;
-}
-double Population::haversineDistance(double lat1, double lon1, double lat2, double lon2) {
-    return calculateHaversineDistance(lat1, lon1, lat2, lon2);
-}
 
 
 // --- BFS Pathfinding Implementation (Modified Reconstruction) ---

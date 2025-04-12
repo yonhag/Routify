@@ -130,7 +130,6 @@
   <ItemGroup>
     <ClCompile Include="Graph.cpp" />
     <ClCompile Include="Main.cpp" />
-    <ClCompile Include="PathFinder.cpp" />
     <ClCompile Include="Population.cpp" />
     <ClCompile Include="RequestHandler.cpp" />
     <ClCompile Include="Route.cpp" />
@@ -140,12 +139,12 @@
   <ItemGroup>
     <ClInclude Include="Graph.h" />
     <ClInclude Include="json.hpp" />
-    <ClInclude Include="PathFinder.h" />
     <ClInclude Include="Population.h" />
     <ClInclude Include="RequestHandler.h" />
     <ClInclude Include="Route.h" />
     <ClInclude Include="Server.h" />
     <ClInclude Include="Socket.h" />
+    <ClInclude Include="Utilities.hpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

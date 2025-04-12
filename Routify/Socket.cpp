@@ -37,14 +37,14 @@ bool Socket::isValid() const {
     return sockfd != INVALID_SOCKET;
 }
 
-bool Socket::sendMessage(const std::string& message) {
+bool Socket::sendMessage(const std::string& message) const {
     if (!isValid())
         return false;
     int sent = send(sockfd, message.c_str(), static_cast<int>(message.size()), 0);
     return sent != SOCKET_ERROR;
 }
 
-std::string Socket::receiveMessage(int bufferSize) {
+std::string Socket::receiveMessage(int bufferSize) const {
     if (!isValid())
         return "";
     char* buffer = new char[bufferSize + 1];

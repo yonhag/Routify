@@ -1,4 +1,5 @@
 #include "Graph.h"
+#include "Utilities.hpp"
 #include <stdexcept>
 #include <iostream>
 #include <sstream>
@@ -90,6 +91,18 @@ bool Graph::hasStation(const int id) const
 size_t Graph::getStationCount() const
 {
     return this->_map.size();
+}
+
+std::vector<std::pair<int, Graph::Station>> Graph::getNearbyStations(double latitude, double longitude) const
+{
+	std::vector<std::pair<int, Station>> nearbyStations;
+	for (const auto& [id, station] : _map) {
+		double distance = Utilities::calculateHaversineDistance(station.latitude, station.longitude, latitude, longitude);
+		if (distance <= this->maxNearbyDistance) {
+            nearbyStations.push_back({ id, station });
+		}
+	}
+    return nearbyStations;
 }
 
 Graph::Station& Graph::getStationRefById(int id) {

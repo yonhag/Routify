@@ -1,0 +1,102 @@
+body {
+    font-family: sans-serif;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    height: 100vh; /* Make body take full viewport height */
+}
+
+h1 {
+    text-align: center;
+    margin: 10px 0;
+    flex-shrink: 0; /* Prevent shrinking */
+}
+
+.controls {
+    text-align: center;
+    padding: 10px;
+    flex-shrink: 0;
+}
+
+.controls input[type="search"] {
+    padding: 8px 12px;
+    min-width: 250px; /* Adjust width as needed */
+    font-size: 1em;
+}
+
+#map {
+    flex-grow: 1;
+    width: 100%;
+    background-color: #eee;
+}
+
+/* --- Styling for Marker Hover Tooltip --- */
+.leaflet-tooltip {
+    background-color: white; /* White background */
+    border: 1px solid #ccc;  /* Optional: light grey border */
+    border-radius: 4px;     /* Rounded corners */
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2); /* Optional: subtle shadow */
+    color: #333;            /* Dark text color */
+    padding: 6px 10px;      /* Padding inside the tooltip */
+    font-size: 0.9em;       /* Adjust font size if needed */
+    white-space: pre-wrap;  /* Allow line breaks (\n) in title */
+}
+
+.leaflet-tooltip-top:before,
+.leaflet-tooltip-bottom:before,
+.leaflet-tooltip-left:before,
+.leaflet-tooltip-right:before {
+    border: none;
+}
+
+
+#status-message {
+    text-align: center;
+    padding: 8px;
+    margin: 5px auto; /* Center horizontally if needed */
+    border-radius: 4px;
+    display: none; /* Initially hidden */
+    max-width: 80%; /* Prevent it getting too wide */
+    font-size: 0.95em;
+    border: 1px solid transparent;
+}
+
+.status-info {
+    color: #00529B;
+    background-color: #BDE5F8;
+    border-color: #00529B;
+}
+
+.status-success {
+    color: #270;
+    background-color: #DFF2BF;
+     border-color: #270;
+}
+
+.status-warning {
+    color: #9F6000;
+    background-color: #FEEFB3;
+     border-color: #9F6000;
+}
+
+.status-error {
+    color: #D8000C;
+    background-color: #FFD2D2;
+     border-color: #D8000C;
+}
+
+.route-polyline {
+    stroke: blue;
+    stroke-width: 4;
+    stroke-opacity: 0.7;
+    stroke-dasharray: 5, 10; /* Dashed line pattern */
+    fill: none; /* Polylines shouldn't be filled */
+}
+
+.route-polyline-walk {
+    stroke: green;
+    stroke-width: 4;
+    stroke-opacity: 0.8;
+    stroke-dasharray: 2, 4; /* Different dash pattern */
+}

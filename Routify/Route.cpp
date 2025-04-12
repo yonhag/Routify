@@ -1,6 +1,6 @@
-
 #include "Route.h"
 #include "Graph.h" // Required for Graph types and access
+#include "Utilities.hpp"
 #include <iostream>
 #include <cstdlib>
 #include <ctime>
@@ -12,29 +12,15 @@
 #include <vector>    // Explicit include
 #include <unordered_set> // For visited checks in segment generation
 
-// Define M_PI if not available
-#ifndef M_PI
-#define M_PI 3.14159265358979323846
-#endif
-
-// Define MAX_WALKING_DISTANCE as a static const member if it belongs logically to Route
-// Or keep it global/namespaced if used more widely. For now, assume it's conceptual for isValid.
-// const double Route::MAX_WALKING_DISTANCE = 1.0; // Definition would go in Route.cpp if declared static in header
-
-// Consistent Haversine function for internal use
-static double calculateHaversineDistanceRoute(double lat1, double lon1, double lat2, double lon2) {
-    const double R = 6371.0; // Earth radius in kilometers
-    if (abs(lat1 - lat2) < 1e-9 && abs(lon1 - lon2) < 1e-9) { return 0.0; }
-    double dLat = (lat2 - lat1) * M_PI / 180.0;
-    double dLon = (lon2 - lon1) * M_PI / 180.0;
-    lat1 = lat1 * M_PI / 180.0; lat2 = lat2 * M_PI / 180.0;
-    double a = sin(dLat / 2) * sin(dLat / 2) + cos(lat1) * cos(lat2) * sin(dLon / 2) * sin(dLon / 2);
-    if (a < 0.0) a = 0.0; if (a > 1.0) a = 1.0; // Clamp 'a' to [0, 1] range
-    double c = 2 * atan2(sqrt(a), sqrt(1.0 - a));
-    return R * c;
-}
-
 // --- Route Class Implementation ---
+
+namespace {
+    bool isPublicTransport(Graph::TransportMethod method) {
+        return method == Graph::TransportMethod::Bus ||
+            method == Graph::TransportMethod::Train ||
+            method == Graph::TransportMethod::LightTrain;
+    }
+}
 
 // Add a visited station step
 void Route::addVisitedStation(const VisitedStation& vs) {
@@ -63,22 +49,48 @@ double Route::getTotalCost() const {
 
 // Calculate number of transfers (line changes)
 int Route::getTransferCount() const {
-    if (_stations.size() <= 2) return 0; // Need at least 3 stations (2 lines) for a transfer
+    // Need at least two segments (start -> vehicle) to have any boardings.
+    if (_stations.size() < 2) {
+        return 0;
+    }
 
-    int transfers = 0;
-    for (size_t i = 2; i < this->_stations.size(); ++i) {
-        const std::string& prevLineId = this->_stations[i - 1].line.id;
-        const std::string& currentLineId = this->_stations[i].line.id;
+    int vehicleBoardings = 0; // Count total times a vehicle is boarded
 
-        // Count as transfer if ID changes, EXCLUDING changes involving "Start" or "Walk"
-        if (currentLineId != prevLineId &&
-            currentLineId != "Start" && prevLineId != "Start" &&
-            currentLineId != "Walk" && prevLineId != "Walk")
-        {
-            transfers++;
+    // Iterate through the segments (from the second station onwards)
+    for (size_t i = 1; i < _stations.size(); ++i) {
+        const auto& currentVs = _stations[i];
+        const auto& prevVs = _stations[i - 1]; // Station arrived at before current
+
+        Graph::TransportMethod currentMethod = currentVs.line.type;
+        const std::string& currentLineId = currentVs.line.id;
+
+        // Get previous method/ID. Handle the "Start" case (index i=1).
+        // The line associated with prevVs (at index i-1) is the one taken *to reach it*.
+        Graph::TransportMethod prevMethod = prevVs.line.type;
+        const std::string& prevLineId = prevVs.line.id;
+
+        // Check if the CURRENT segment involves boarding a public transport vehicle
+        if (isPublicTransport(currentMethod)) {
+            // Now, determine if this boarding is a "new" boarding event
+            // compared to the previous segment.
+
+            // It's a new boarding if:
+            // 1. The previous segment was NOT public transport (i.e., Walk or Start)
+            // OR
+            // 2. The previous segment WAS public transport, BUT the line ID changed.
+            if (!isPublicTransport(prevMethod) ||
+                (isPublicTransport(prevMethod) && currentLineId != prevLineId))
+            {
+                vehicleBoardings++;
+            }
+            // Else (previous was public transport AND same line ID), it's not a new boarding.
         }
     }
-    return transfers;
+
+    // The number of transfers is the number of boardings MINUS ONE
+    // (because the first boarding doesn't count as a transfer).
+    // Ensure the result is not negative if there were 0 or 1 boardings.
+    return std::max(0, vehicleBoardings - 1);
 }
 
 // Get a copy of the visited stations vector
@@ -179,7 +191,7 @@ bool Route::isValid(int startId, int destinationId, const Graph& graph) const {
 }
 
 
-// --- getFitness (MODIFIED Penalties) ---
+// --- getFitness - Higher is better ---
 double Route::getFitness(int startId, int destinationId, const Graph& graph) const {
     if (!isValid(startId, destinationId, graph)) { return 0.0; }
 
@@ -241,7 +253,7 @@ bool Route::generatePathSegment(int segmentStartId, int segmentEndId, const Grap
             if (!graph.hasStation(currentCode)) return false;
             const Graph::Station& currentStation = graph.getStationById(currentCode);
 
-            double distanceToSegmentEnd = calculateHaversineDistanceRoute(currentStation.latitude, currentStation.longitude, destLat, destLon);
+            double distanceToSegmentEnd = Utilities::calculateHaversineDistance(currentStation.latitude, currentStation.longitude, destLat, destLon);
             const double MAX_WALKING_DISTANCE_SEGMENT = 1.0;
             if (distanceToSegmentEnd < MAX_WALKING_DISTANCE_SEGMENT) {
                 Graph::TransportationLine walkingEdge("Walk", segmentEndId, (distanceToSegmentEnd / 5.0) * 60.0, 0, Graph::TransportMethod::Walk);
@@ -260,7 +272,7 @@ bool Route::generatePathSegment(int segmentStartId, int segmentEndId, const Grap
                 int nextCode = line.to;
                 if (graph.hasStation(nextCode) && visitedCodesSegment.find(nextCode) == visitedCodesSegment.end()) {
                     const Graph::Station& nextStation = graph.getStationById(nextCode);
-                    double distToDest = calculateHaversineDistanceRoute(nextStation.latitude, nextStation.longitude, destLat, destLon);
+                    double distToDest = Utilities::calculateHaversineDistance(nextStation.latitude, nextStation.longitude, destLat, destLon);
                     weights.push_back(distToDest + epsilon); validLines.push_back(&line);
                 }
             }
@@ -293,15 +305,114 @@ bool Route::generatePathSegment(int segmentStartId, int segmentEndId, const Grap
 
 
 
-// --- Mutate (No changes needed, uses fixed generatePathSegment) ---
+
+
+// --- Mutate (MODIFIED) ---
 void Route::mutate(double mutationRate, std::mt19937& gen, int startId, int destinationId, const Graph& graph) {
-    // (Keep existing mutate logic)
-    std::uniform_real_distribution<> prob_dis(0.0, 1.0); if (prob_dis(gen) >= mutationRate) return;
-    if (this->_stations.size() <= 2) return;
-    std::uniform_int_distribution<> index_dis(1, static_cast<int>(_stations.size() - 1)); int restart_index = index_dis(gen);
-    int segment_start_code; try { segment_start_code = graph.getStationIdByName(_stations[restart_index - 1].station.name); }
-    catch (...) { return; }
-    std::vector<VisitedStation> new_segment;
-    bool success = generatePathSegment(segment_start_code, destinationId, graph, gen, new_segment);
-    if (success && !new_segment.empty()) { _stations.resize(restart_index); _stations.insert(_stations.end(), new_segment.begin(), new_segment.end()); }
+    // Check overall mutation probability
+    std::uniform_real_distribution<> prob_dis(0.0, 1.0);
+    if (prob_dis(gen) >= mutationRate) {
+        return; // No mutation this time
+    }
+
+    // --- Choose Mutation Type ---
+    // e.g., 80% chance regenerate segment, 20% chance try walk replacement
+    std::uniform_real_distribution<> type_dis(0.0, 1.0);
+    double mutationTypeRoll = type_dis(gen);
+
+    // --- Mutation Type 1: Regenerate Tail Segment (Original Logic) ---
+    if (mutationTypeRoll < 0.8 || _stations.size() <= 3) { // Also fallback if route too short for walk replacement
+        if (this->_stations.size() <= 2) return; // Need 3+ for segment regen
+
+        std::uniform_int_distribution<> index_dis(1, static_cast<int>(_stations.size() - 1));
+        int restart_index = index_dis(gen);
+        int segment_start_code;
+        try { segment_start_code = graph.getStationIdByName(_stations[restart_index - 1].station.name); }
+        catch (...) { return; } // Abort if prev station lookup fails
+
+        std::vector<VisitedStation> new_segment;
+        bool success = generatePathSegment(segment_start_code, destinationId, graph, gen, new_segment);
+
+        if (success && !new_segment.empty()) {
+            _stations.resize(restart_index);
+            _stations.insert(_stations.end(), new_segment.begin(), new_segment.end());
+        }
+    }
+    // --- Mutation Type 2: Try Walking Replacement ---
+    else if (_stations.size() > 3) { // Need at least 4 stations for a 2-leg segment (start, s1, s2, end...)
+        // Define max walk distance for replacement and max segment length to check
+        const double MAX_WALK_REPLACE_DISTANCE = 1.5; // km - Allow slightly longer walks than end-of-segment checks
+        const size_t MAX_SEGMENT_LEGS = 2;            // Check replacing 1 or 2 transit legs
+
+        // Randomly choose start index of segment (must be at least 1, leaving start node)
+        // Ensure end index doesn't exceed bounds and allows for MAX_SEGMENT_LEGS
+        size_t max_start_idx = _stations.size() - 1 - MAX_SEGMENT_LEGS;
+        if (max_start_idx <= 0) return; // Cannot select a valid segment start
+        std::uniform_int_distribution<> seg_start_dis(1, static_cast<int>(max_start_idx));
+        size_t idx1 = seg_start_dis(gen); // Index of the station *before* the segment to potentially replace
+
+        // Randomly choose segment length (1 or 2 legs)
+        std::uniform_int_distribution<> seg_len_dis(1, static_cast<int>(MAX_SEGMENT_LEGS));
+        size_t legs_to_replace = seg_len_dis(gen);
+        size_t idx2 = idx1 + legs_to_replace; // Index of the station *at the end* of the segment
+
+        // Get relevant stations and codes
+        const VisitedStation& before_segment_vs = _stations[idx1];
+        const VisitedStation& segment_end_vs = _stations[idx2];
+        int before_segment_code = before_segment_vs.prevStationCode; // Code before station idx1
+        if (idx1 == 0) { // Special case if idx1 is the first station (shouldn't happen with distribution starting at 1, but safety)
+            try { before_segment_code = graph.getStationIdByName(before_segment_vs.station.name); }
+            catch (...) { return; }
+        }
+        else {
+            before_segment_code = _stations[idx1].prevStationCode; // Use the reliable code
+        }
+
+
+        // Need code for the end station of the segment to create the walk line
+        int segment_end_code = segment_end_vs.line.to; // The 'to' code of the line that reached the segment end station
+
+        // Calculate direct walking distance
+        double walk_dist = Utilities::calculateHaversineDistance(
+            before_segment_vs.station.latitude, before_segment_vs.station.longitude,
+            segment_end_vs.station.latitude, segment_end_vs.station.longitude
+        );
+
+        if (walk_dist < MAX_WALK_REPLACE_DISTANCE) {
+            // Walking is feasible, create the walk step
+            const double WALK_SPEED_KPH = 5.0;
+            double walk_time = (walk_dist / WALK_SPEED_KPH) * 60.0; // time in minutes
+
+            Graph::TransportationLine walkLine("Walk", segment_end_code, walk_time, 0, Graph::TransportMethod::Walk);
+            VisitedStation walkStep(segment_end_vs.station, walkLine, before_segment_code); // Walk ends at station idx2, came from station idx1
+
+            // --- Replace the segment ---
+            // Erase the stations within the segment being replaced (from idx1+1 up to idx2)
+            // Example: Route A-B-C-D. idx1=A, idx2=C. Erase B and C (indices 1, 2).
+            // Indices to erase: idx1+1 to idx2+1 (exclusive end iterator)
+            auto erase_start = _stations.begin() + idx1 + 1;
+            // Handle potential off-by-one if idx2 is last element?
+            auto erase_end = _stations.begin() + idx2 + 1;
+            // Adjust erase_end if it goes past the actual end iterator
+            if (erase_end > _stations.end()) erase_end = _stations.end();
+
+
+            // Check if erase range is valid before erasing
+            if (erase_start < erase_end) {
+                _stations.erase(erase_start, erase_end);
+                // Insert the single walk step *after* idx1
+                _stations.insert(_stations.begin() + idx1 + 1, walkStep);
+                // Optional: std::cout << "DEBUG: Replaced segment with walk!" << std::endl;
+            }
+            else {
+                // Optional: std::cerr << "DEBUG: Walk replacement erase range invalid." << std::endl;
+            }
+
+
+        }
+        // else: Walking distance too long, do nothing for this mutation type
+    }
+    // else: No other mutation types defined for now
 }
+
+

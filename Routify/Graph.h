@@ -73,12 +73,16 @@ public:
 
     size_t getStationCount() const;
 
+    std::vector<std::pair<int, Graph::Station>> getNearbyStations(double latitude, double longitude) const;
+
 private:
     void fetchAPIData();
     void fetchGTFSStops();                   // Parses stops.txt to extract station code, name, and coordinates.
     void fetchGTFSTransportationLines();     // Parses routes.txt, trips.txt, and stop_times.txt to add edges.
 
     Station& getStationRefById(int id);
+
+	const double maxNearbyDistance = 5.0; // km
 
     std::unordered_map<int, Station> _map;
 };
