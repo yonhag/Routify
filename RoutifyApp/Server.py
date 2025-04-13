@@ -27,14 +27,13 @@ def serve_files(filename):
     
     directory_to_serve = APP_ROOT
     file_to_serve = filename
-    is_known_root_file = False # Flag for allowed root files
 
     if filename.startswith('js/'):
         directory_to_serve = JS_DIR
         # Remove 'js/' prefix to get the actual filename within the js directory
         file_to_serve = filename[len('js/'):]
     elif filename in ['style.css', 'favicon.ico']:
-        is_known_root_file = True
+        pass
     else:
         # If it's not starting with 'js/' and isn't an allowed root file, reject.
         abort(404, description="Resource not found or path not allowed")
@@ -126,7 +125,6 @@ def proxy_route_request():
 
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-            # ... (the entire socket communication block: connect, settimeout, send, shutdown, receive loop, parse, error handling) ...
             sock.settimeout(SOCKET_TIMEOUT)
             print(f"Connecting to C++ backend (Timeout: {SOCKET_TIMEOUT}s)...")
             sock.connect((CPP_BACKEND_HOST, CPP_BACKEND_PORT))
@@ -182,7 +180,6 @@ def proxy_route_request():
         return jsonify({"error": "Unknown error", "details": "Failed to obtain a valid response from backend service."}), 500
 
 
-    # ... (mimetypes, print statements, app.run) ...
 if __name__ == '__main__':
     mimetypes.add_type('application/javascript', '.js')
     mimetypes.add_type('text/css', '.css')

@@ -30,18 +30,19 @@ public:
 
     // Represents a node (station) in the graph.
     struct Station {
+		int code;                               // Station code. Also the map key.
         std::string name;                       // Station name.
         Utilities::Coordinates coordinates;     // Station location.
         std::vector<TransportationLine> lines;  // Lines going through the station.
 
-        Station(const std::string& name, const Utilities::Coordinates& coords)
-            : name(name), coordinates(coords) {
+        Station(const int code, const std::string& name, const Utilities::Coordinates& coords)
+            : code(code), name(name), coordinates(coords) {
         }
 
-        Station() : name(""), coordinates() {}
+        Station() : code(-1), name(""), coordinates() {}
 
         bool operator==(const Station& other) const {
-            return this->name == other.name && this->coordinates == other.coordinates;
+            return this->code == other.code;
         }
     };
 
@@ -62,9 +63,6 @@ public:
 
     // Returns a station from the graph.
     const Station& getStationById(const int id) const;
-
-    // Finds a station id based on station data.
-    int getStationIdByName(const std::string& name) const;
 
     // Checks if a certain station exists.
     bool hasStation(const int id) const;

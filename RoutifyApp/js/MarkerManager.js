@@ -41,9 +41,7 @@ class MarkerManager {
                  console.log("MarkerManager: actionPointMarkers added to map.");
             }
         } else {
-            console.warn("MarkerManager: Map not ready. Layers not added yet.");
-            // You might need a mechanism to call tryAddLayersToMap() again
-            // once the map *is* ready, e.g., triggered by an event from MapManager.
+            null;
         }
     }
 
@@ -208,14 +206,8 @@ class MarkerManager {
         // 2. Define marker options (customize icon later if desired)
         const markerOptions = {
             title: "Destination" // Tooltip text on hover
-            // Example custom icon (requires defining destinationIcon):
-            // icon: L.icon({
-            //     iconUrl: 'path/to/destination-flag-icon.png',
-            //     iconSize: [25, 41], // size of the icon
-            //     iconAnchor: [12, 41], // point of the icon which will correspond to marker's location
-            //     popupAnchor: [1, -34] // point from which the popup should open relative to the iconAnchor
-            // })
         };
+        this.clearRouteDisplay();
 
         // 3. Create the new Leaflet marker
         this.destinationMarker = L.marker([lat, lng], markerOptions);
@@ -246,12 +238,28 @@ class MarkerManager {
     /**
      * Removes all markers and polylines from the route layer group.
      */
-    clearRouteDisplay() { // Renamed for clarity
+    clearRouteDisplay() { // Renamed for clarity, now updated
+        let clearedSomething = false;
         if (this.routeLayer) {
             this.routeLayer.clearLayers();
-            console.log("Route display cleared.");
+            clearedSomething = true;
+            // console.log("Route display (lines) cleared."); // Keep logging minimal or combine
         } else {
-            console.warn("Attempted to clear route display, but routeLayer was not initialized.");
+            console.warn("Attempted to clear route display lines, but routeLayer was not initialized.");
+        }
+
+        // --- ADD THIS BLOCK ---
+        if (this.actionPointMarkers) {
+            this.actionPointMarkers.clearLayers();
+            clearedSomething = true;
+            // console.log("Route display (action/intermediate markers) cleared.");
+        } else {
+            console.warn("Attempted to clear route action point markers, but actionPointMarkers was not initialized.");
+        }
+        // --- END ADDED BLOCK ---
+
+        if (clearedSomething) {
+             console.log("Route display (lines and markers) cleared.");
         }
     }
 

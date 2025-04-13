@@ -40,7 +40,7 @@ public:
     int getTransferCount() const;
     
     // Returns the visited stations vector.
-    const std::vector<VisitedStation> getVisitedStations() const;
+    const std::vector<VisitedStation>& getVisitedStations() const;
 
     /*
     * Checks if the route is valid -

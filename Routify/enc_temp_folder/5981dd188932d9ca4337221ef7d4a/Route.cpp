@@ -284,11 +284,11 @@ double Route::getFitness(int startId, int destinationId, const Graph& graph,
     int transfers = getTransferCount(); // Calculated as boardings - 1
 
     // --- Define weights/penalties (Crucial Step - High Walk Penalty) ---
-    const double time_weight = 1.0;          
-    const double cost_weight = 0.1;          
-    const double transfer_penalty = 15.0;    
-    const double walk_penalty_factor = 8.0;  
-    const double stop_penalty = 0.0;         
+    const double time_weight = 1.0;          // Base weight for all travel time
+    const double cost_weight = 0.1;          // Weight for monetary cost
+    const double transfer_penalty = 15.0;    // << TRY EVEN LOWER Penalty per transfer
+    const double walk_penalty_factor = 8.0;  // << SIGNIFICANTLY REDUCED walk penalty factor
+    const double stop_penalty = 0.0;         // << ENSURE ZERO Penalty per public transport segment
 
     // --- Calculate Score ---
     // 1. Base time includes all segments
