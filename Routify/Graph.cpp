@@ -45,15 +45,14 @@ Graph::Graph() {
     fetchAPIData();
 }
 
-Graph::~Graph() {
-}
+Graph::~Graph() = default;
 
 void Graph::addStation(const int code, const std::string& name, const Utilities::Coordinates& coords) {
     if (!coords.isValid()) {
 		std::cout << "Invalid coords for " << code << ": " << coords.latitude << " " << coords.longitude << std::endl;
     }
 
-    this->_map.emplace(code, Station(name, coords));
+    this->_map.emplace(code, Station(code, name, coords));
 }
 
 const std::vector<Graph::TransportationLine>& Graph::getLinesFrom(const int nodeId) const {
@@ -73,19 +72,9 @@ const Graph::Station& Graph::getStationById(const int id) const
     return it->second;
 }
 
-int Graph::getStationIdByName(const std::string& name) const
-{
-    for (const auto& [id, station] : _map) {
-        if (station.name == name) {
-            return id;
-        }
-    }
-    throw std::runtime_error("Station not found " + name);
-}
-
 bool Graph::hasStation(const int id) const
 {
-    return _map.count(id) > 0;
+    return _map.contains(id);
 }
 
 size_t Graph::getStationCount() const
@@ -117,99 +106,140 @@ std::vector<std::pair<int, Graph::Station>> Graph::getNearbyStations(const Utili
     return nearbyStations;
 }
 
+/*
+* Simplified function to find stations between two points along a specific line.
+* Assumes a reasonably direct path exists in the graph for the given lineId
+* between the start and end points. Includes basic safeguards.
+*/
 std::vector<Graph::Station> Graph::getStationsAlongLineSegment(
     const std::string& lineId,
     int segmentStartStationId,
     int segmentEndStationId) const
 {
-    std::vector<Graph::Station> pathStations; // Store Station objects
-    std::unordered_set<int> visitedOnPathIds; // Still track IDs to detect cycles
-
-    // 1. Basic Validation & Get Start Station Object
-    const Station* startStationPtr = nullptr;
-    const Station* endStationPtr = nullptr; // Not strictly needed for trace, but good practice
-    try {
-        startStationPtr = &getStationById(segmentStartStationId);
-        endStationPtr = &getStationById(segmentEndStationId); // Verify end exists too
-    }
-    catch (const std::out_of_range& oor) {
-        std::cerr << "Warning [getStationsAlongLineSegment]: Start (" << segmentStartStationId
-            << ") or End (" << segmentEndStationId << ") station ID not found. " << oor.what() << std::endl;
-        return pathStations; // Return empty vector
-    }
-
-    if (segmentStartStationId == segmentEndStationId) {
-        pathStations.push_back(*startStationPtr); // Add the single station object
-        return pathStations;
-    }
-
-    int currentStationId = segmentStartStationId;
-    pathStations.push_back(*startStationPtr); // Add start station object
-    visitedOnPathIds.insert(currentStationId);
-
-    const int MAX_STEPS = 150;
+    std::vector<Graph::Station> pathStations;
+    const int MAX_STEPS = 150; // Safety limit against potential cycles or errors
     int stepCount = 0;
 
-    // 2. Trace the path
+    // 1. Get Start Station & Add to Path
+    try {
+        const Station& startStation = getStationById(segmentStartStationId);
+        pathStations.push_back(startStation);
+
+        // If start is already the end, we're done
+        if (segmentStartStationId == segmentEndStationId) {
+            return pathStations;
+        }
+    }
+    catch (const std::out_of_range& oor) {
+        std::cerr << "Error [getStationsAlongLineSegment Simple]: Start station ID "
+            << segmentStartStationId << " not found. " << oor.what() << std::endl;
+        return {}; // Return empty vector if start doesn't exist
+    }
+    catch (const std::exception& e) {
+        std::cerr << "Error [getStationsAlongLineSegment Simple]: Exception getting start station " << segmentStartStationId << ": " << e.what() << std::endl;
+        return {};
+    }
+
+
+    // 2. Trace the Path Step-by-Step
+    int currentStationId = segmentStartStationId;
+    int previousStationId = -1; // Track just the immediate previous to avoid simple A->B->A loops
+
     while (currentStationId != segmentEndStationId && stepCount < MAX_STEPS) {
         stepCount++;
-        bool foundNextHop = false;
-        const TransportationLine* nextHopLine = nullptr; // To store the chosen line
+        const Graph::TransportationLine* chosenLine = nullptr;
 
+        // Find *one* appropriate outgoing edge for the lineId
         try {
+            // Ensure current station is valid before proceeding
+            if (!hasStation(currentStationId)) {
+                std::cerr << "Error [getStationsAlongLineSegment Simple]: Current station " << currentStationId << " became invalid during trace." << std::endl;
+                break;
+            }
             const std::vector<TransportationLine>& linesFromCurrent = getLinesFrom(currentStationId);
 
-            // Find the next hop, by finding the line
+            // Search strategy:
+            // 1. Look for the line going directly to the target end station.
+            // 2. If not found, look for *any* line with the matching ID that doesn't immediately go back.
+            const Graph::TransportationLine* fallbackLine = nullptr;
+
             for (const auto& line : linesFromCurrent) {
                 if (line.id == lineId) {
-                    nextHopLine = &line;
-                    break;
+                    if (line.to == segmentEndStationId) {
+                        chosenLine = &line; // Found direct path to end
+                        break;
+                    }
+                    // Check if it's a valid fallback (doesn't go back to immediate previous)
+                    if (line.to != previousStationId) {
+                        if (fallbackLine == nullptr) { // Store the first valid fallback found
+                            fallbackLine = &line;
+                        }
+                        // Continue checking in case the direct target edge is later
+                    }
                 }
             }
 
-            if (nextHopLine != nullptr) {
-                int nextStationId = nextHopLine->to;
-
-                // Cycle detection using IDs
-                if (visitedOnPathIds.count(nextStationId)) {
-                    std::cerr << "Warning [getStationsAlongLineSegment]: Cycle detected..." << std::endl;
-                    pathStations.clear(); return pathStations;
-                }
-
-                // Get the next Station object
-                const Station& nextStation = getStationById(nextStationId); // Can throw std::out_of_range
-
-                // Add the *next* station object to the path
-                pathStations.push_back(nextStation);
-                visitedOnPathIds.insert(nextStationId);
-                currentStationId = nextStationId; // Update the current ID for the next loop iteration
-                foundNextHop = true;
-
-            }
-            else {
-                std::cerr << "Warning [getStationsAlongLineSegment]: No outgoing edge found..." << std::endl;
-                pathStations.clear(); return pathStations;
+            // If direct target wasn't found, use the fallback if one exists
+            if (chosenLine == nullptr && fallbackLine != nullptr) {
+                chosenLine = fallbackLine;
             }
 
         }
-        catch (const std::out_of_range& oor_err) {
-            std::cerr << "Error [getStationsAlongLineSegment]: Station lookup failed for ID "
-                << (nextHopLine ? nextHopLine->to : currentStationId) // ID that failed
-                << ". " << oor_err.what() << std::endl;
-            pathStations.clear(); return pathStations;
+        catch (const std::out_of_range& oor) {
+            std::cerr << "Error [getStationsAlongLineSegment Simple]: Cannot get lines from station " << currentStationId << ". " << oor.what() << std::endl;
+            break; // Stop if we can't get lines
         }
         catch (const std::exception& e) {
-            std::cerr << "Error [getStationsAlongLineSegment]: Exception during trace: " << e.what() << std::endl;
-            pathStations.clear(); return pathStations;
+            std::cerr << "Error [getStationsAlongLineSegment Simple]: Exception getting lines from " << currentStationId << ": " << e.what() << std::endl;
+            break;
+        }
+
+
+        // 3. Process the chosen edge (or lack thereof)
+        if (chosenLine != nullptr) {
+            int nextStationId = chosenLine->to;
+            try {
+                // Get the station object for the next stop
+                const Station& nextStation = getStationById(nextStationId);
+                // Add it to our path result
+                pathStations.push_back(nextStation);
+
+                // Update state for the next iteration
+                previousStationId = currentStationId;
+                currentStationId = nextStationId;
+
+            }
+            catch (const std::out_of_range& oor) {
+                std::cerr << "Error [getStationsAlongLineSegment Simple]: Next station ID " << nextStationId
+                    << " (on line " << lineId << ") not found. " << oor.what() << std::endl;
+                break; // Stop if the graph data points to a non-existent station
+            }
+            catch (const std::exception& e) {
+                std::cerr << "Error [getStationsAlongLineSegment Simple]: Exception getting next station " << nextStationId << ": " << e.what() << std::endl;
+                break;
+            }
+        }
+        else {
+            // Dead end: No valid outgoing edge found for this line from the current station
+            std::cerr << "Warning [getStationsAlongLineSegment Simple]: No onward path found for line " << lineId
+                << " from station " << currentStationId << " towards " << segmentEndStationId << ". Stopping trace." << std::endl;
+            break; // Stop tracing
         }
     } // End while loop
 
-    // 3. Fail
-    if (stepCount >= MAX_STEPS) { throw std::runtime_error("stepCount exceeded MAX_STEPS on Graph.cpp"); }
-    if (currentStationId != segmentEndStationId) { throw std::runtime_error("currentStationId != segmentEndStationId on Graph.cpp"); }
+    // 4. Log warnings if trace didn't complete as expected
+    if (stepCount >= MAX_STEPS) {
+        std::cerr << "Warning [getStationsAlongLineSegment Simple]: Exceeded MAX_STEPS (" << MAX_STEPS << ") for "
+            << segmentStartStationId << " -> " << segmentEndStationId << " on line " << lineId << "." << std::endl;
+    }
+    // Check if loop finished but didn't reach the end (implies dead end was hit)
+    if (currentStationId != segmentEndStationId && stepCount < MAX_STEPS) {
+        std::cerr << "Warning [getStationsAlongLineSegment Simple]: Trace did not reach target " << segmentEndStationId
+            << " from " << segmentStartStationId << " on line " << lineId << ". Returning partial path." << std::endl;
+    }
 
-    // 4. Success
-    return pathStations; // Return vector of Station objects
+    // 5. Return the collected path (complete or partial)
+    return pathStations;
 }
 
 Graph::Station& Graph::getStationRefById(const int id) {
@@ -226,7 +256,7 @@ void Graph::fetchAPIData() {
 }
 
 void Graph::fetchGTFSStops() {
-    std::ifstream file("GTFS/stops.txt");
+    std::ifstream file(GTFSStopsFile);
     if (!file.is_open()) {
         std::cerr << "Failed to open GTFS stops.txt file.\n";
         return;
@@ -254,9 +284,9 @@ void Graph::fetchGTFSStops() {
 }
 
 void Graph::fetchGTFSTransportationLines() {
-    std::ifstream stopTimesFile("GTFS/stop_times_filtered.txt");
+    std::ifstream stopTimesFile(GTFSLinesFile);
     if (!stopTimesFile.is_open()) {
-        std::cerr << "Failed to open stop_times_filtered.txt file." << std::endl;
+        std::cerr << "Failed to open " << GTFSLinesFile << " file." << std::endl;
         return;
     }
 
@@ -290,14 +320,13 @@ void Graph::fetchGTFSTransportationLines() {
         if (it != station.lines.end()) {
             // Found an existing line, add the arrival time.
             it->arrivalTimes.push_back(time);
-            lastLine = &(*it);  // Update lastLine to point to the actual element in the vector.
+            lastLine = std::to_address(it);  // Update lastLine to point to the actual element in the vector.
         }
         else {
             // Create a new transportation line.
             TransportationLine newLine;
             newLine.id = line_code;
             newLine.arrivalTimes.push_back(time);
-            newLine.price = 0;
             station.lines.push_back(newLine);
             lastLine = &station.lines.back();  // lastLine references the last element inserted
         }
@@ -306,7 +335,7 @@ void Graph::fetchGTFSTransportationLines() {
 
         if (i % 1000000 == 0)
             std::cout << "Processed " << i / 1000000 << "B lines, out of 20.6B" << std::endl;
-        i++;          // Increment the line counter
+        i++;
     }
     std::cout << "Done!" << std::endl;
     stopTimesFile.close();

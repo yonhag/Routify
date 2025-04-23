@@ -10,6 +10,7 @@
 
 const double Route::WALK_SPEED_KPH = 5.0;
 
+const double Route::ASSUMED_PUBLIC_TRANSPORT_SPEED_KPH = 50.0;
 // --- Route Class Implementation ---
 
 namespace {
@@ -19,6 +20,10 @@ namespace {
             method == Graph::TransportMethod::LightTrain;
     }
 
+}
+
+double Route::getEstimatedBaseTime() const {
+    return this->_estimatedBaseTime;
 }
 
 // Add a visited station step
@@ -38,8 +43,8 @@ double Route::getTotalTime() const {
 
 /*
 * Calculates an estimated cost for the route.
-* Uses aerial distnace between first and last station on the line, so it isnt accurate,
-* but provides a good enough approximation for this algorithm.
+* Uses aerial distance between the start and end station of each public transport segment.
+* This is faster but less accurate than tracing the full path.
 */
 double Route::getTotalCost(const Graph& graph) const {
     if (_stations.empty()) {
@@ -49,26 +54,21 @@ double Route::getTotalCost(const Graph& graph) const {
     double totalPublicTransportAerialDistance = 0.0;
     bool usedPublicTransport = false;
 
-    // To get the ID of the first station reliably:
+    // Get the ID of the first station reliably
     int firstStationId = -1;
     if (!_stations.empty()) {
-        // We NEED the ID associated with _stations[0].station object.
-        // This still requires a lookup if Station doesn't store its ID.
-        try {
-            // Assuming getStationIdByName is available, but potentially slow.
-            firstStationId = graph.getStationIdByName(_stations[0].station.name);
-            // If you implement Graph::getStationIdFromStationObject(const Station&), use that.
-            // If Station struct stores its ID: firstStationId = _stations[0].station.id;
-        }
-        catch (const std::runtime_error& e) {
-            std::cerr << "Critical Error [getTotalCost]: Failed to get ID for the first station '"
-                << _stations[0].station.name << "'. Cannot calculate cost accurately. " << e.what() << std::endl;
+        // The first VisitedStation's station object *should* represent the starting station.
+        // We use its code directly.
+        firstStationId = _stations[0].station.code;
+        // Verify it's not the default -1 code
+        if (firstStationId == -1) {
+            std::cerr << "Critical Error [getTotalCost]: First station in route has invalid code (-1)." << std::endl;
             return 0.0; // Or some error value
         }
     }
-    if (firstStationId == -1) {
-        std::cerr << "Critical Error [getTotalCost]: Could not determine ID for the first station." << std::endl;
-        return 0.0; // Cannot proceed without first station ID
+    else {
+        std::cerr << "Critical Error [getTotalCost]: Route is empty, cannot determine first station." << std::endl;
+        return 0.0;
     }
 
 
@@ -82,43 +82,49 @@ double Route::getTotalCost(const Graph& graph) const {
 
             // Determine the start and end station IDs for this segment
             int segmentStartId = currentVs.prevStationCode;
-            int segmentEndId = lineTaken.to;
+            int segmentEndId = lineTaken.to; // The station ID where this line segment ends
 
+            // If it's the first segment, the 'previous' station is the overall start station
             if (segmentStartId == -1 && i == 1) {
-                segmentStartId = firstStationId; // Use the ID we looked up earlier
+                segmentStartId = firstStationId; // Use the ID we determined earlier
             }
             else if (segmentStartId == -1) {
-                std::cerr << "Warning [getTotalCost]: Invalid prevStationCode (-1) for non-first segment." << std::endl;
-                continue;
+                // This indicates an issue if it's not the first segment
+                std::cerr << "Warning [getTotalCost]: Invalid prevStationCode (-1) for non-first segment index " << i << "." << std::endl;
+                continue; // Skip this segment if start ID is invalid
             }
 
-            if (segmentStartId != segmentEndId) {
-                // --- Call the new Graph method ---
-                std::vector<Graph::Station> segmentStations = graph.getStationsAlongLineSegment(
-                    lineTaken.id,
-                    segmentStartId,
-                    segmentEndId);
+            // Check if segment is valid (start and end are different and valid IDs)
+            if (segmentStartId != segmentEndId && segmentStartId != -1 && segmentEndId != -1) {
+                try {
+                    // Get the Station objects for start and end of the segment
+                    const Graph::Station& startSegStation = graph.getStationById(segmentStartId);
+                    const Graph::Station& endSegStation = graph.getStationById(segmentEndId);
 
-                // Calculate distance using the returned Station objects
-                if (segmentStations.size() >= 2) {
-                    for (size_t j = 0; j < segmentStations.size() - 1; ++j) {
-                        // Access coordinates directly from the Station objects
-                        totalPublicTransportAerialDistance += Utilities::calculateHaversineDistance(
-                            segmentStations[j].coordinates,
-                            segmentStations[j + 1].coordinates);
-                    }
+                    // Calculate direct aerial distance between the start and end stations of this segment
+                    totalPublicTransportAerialDistance += Utilities::calculateHaversineDistance(
+                        startSegStation.coordinates,
+                        endSegStation.coordinates);
+
                 }
-                else {
-                    // Handle empty or single-station path result from getStationsAlongLineSegment
-                    if (segmentStations.empty()) {
-                        std::cerr << "Warning [getTotalCost]: getStationsAlongLineSegment returned empty path..." << std::endl;
-                    }
+                catch (const std::out_of_range& oor) {
+                    // Catch errors if getStationById fails
+                    std::cerr << "Warning [getTotalCost]: Failed station lookup for segment "
+                        << segmentStartId << " -> " << segmentEndId << ". " << oor.what() << std::endl;
+                    // Optionally continue, or return an error cost? Continuing might underestimate cost.
+                    continue;
+                }
+                catch (const std::exception& e) {
+                    std::cerr << "Error [getTotalCost]: Exception calculating distance for segment "
+                        << segmentStartId << " -> " << segmentEndId << ": " << e.what() << std::endl;
+                    continue;
                 }
             }
+            // If segmentStartId == segmentEndId, the distance is 0, so no need to add.
         } // end if isPublicTransport
-    } // end for loop
+    } // end for loop through segments
 
-    // --- Fare Calculation (remains the same) ---
+    // --- Fare Calculation (remains the same, uses the accumulated aerial distance) ---
     if (!usedPublicTransport) { return 0.0; }
     // Apply fare rules...
     if (totalPublicTransportAerialDistance <= 15.0) return 6.0;
@@ -149,7 +155,7 @@ int Route::getTransferCount() const {
 }
 
 // Get a copy of the visited stations vector
-const std::vector<Route::VisitedStation> Route::getVisitedStations() const {
+const std::vector<Route::VisitedStation>& Route::getVisitedStations() const {
     return this->_stations;
 }
 
@@ -256,75 +262,143 @@ double Route::getFitness(int startId, int destinationId, const Graph& graph,
     // --- Calculate Initial Walk Time ---
     double initialWalkTime = 0;
     try {
-        initialWalkTime = calculateWalkTime(userCoords, _stations.front().station.coordinates);
+        // Use coordinates of the first station object in the list
+        if (!_stations.empty()) {
+            initialWalkTime = calculateWalkTime(userCoords, _stations.front().station.coordinates);
+        }
     }
     catch (const std::exception& e) {
         std::cerr << "Warning: Exception calculating initial walk time: " << e.what() << std::endl;
-        // Decide how to handle: return 0 fitness? Or just proceed with 0 walk time?
-        // Proceeding with 0 time, but the walk penalty might still apply if distance was > 0 implicitly
     }
 
     // --- Calculate Final Walk Time ---
     double finalWalkTime = 0;
     try {
-        int lastStationIdInRoute = _stations.back().line.to; // ID of the station reached by the last segment
-        const Graph::Station& lastStation = graph.getStationById(lastStationIdInRoute);
-        finalWalkTime = calculateWalkTime(lastStation.coordinates, destCoords);
+        // Use coordinates of the last station object in the list
+        if (!_stations.empty()) {
+            // Get the station object from the last VisitedStation
+            const Graph::Station& lastStationObject = _stations.back().station;
+            // Ensure the last station object actually matches the destinationId for consistency
+            if (lastStationObject.code == destinationId) {
+                finalWalkTime = calculateWalkTime(lastStationObject.coordinates, destCoords);
+            }
+            else {
+                // Fallback if the last station object code doesn't match destinationId (shouldn't happen if isValid passed)
+                std::cerr << "Warning: Last station object code mismatch in getFitness final walk calculation." << std::endl;
+                const Graph::Station& actualLastStation = graph.getStationById(destinationId);
+                finalWalkTime = calculateWalkTime(actualLastStation.coordinates, destCoords);
+            }
+        }
     }
     catch (const std::exception& e) {
-        std::cerr << "Warning: Exception calculating final walk time for station ID "
-            << (_stations.empty() ? -1 : _stations.back().line.to) // Safely access ID
-            << ": " << e.what() << std::endl;
+        std::cerr << "Warning: Exception calculating final walk time: " << e.what() << std::endl;
     }
 
-    // --- Existing Station-to-Station Calculations ---
-    double totalStationToStationTime = getTotalTime(); // Time ONLY between stations
-    double totalCost = getTotalCost(graph);
-    int transfers = getTransferCount(); // Calculated as boardings - 1
+    // --- Calculate Estimated Station-to-Station Time (Distance-Based) ---
+    double totalEstimatedSegmentTime = 0.0;
+    if (_stations.size() >= 2) {
+        for (size_t i = 1; i < _stations.size(); ++i) {
+            const auto& currentVs = _stations[i];
+            const auto& lineTaken = currentVs.line;
+            int segmentStartCode = currentVs.prevStationCode;
 
-    // --- Define weights/penalties (Crucial Step - High Walk Penalty) ---
+            const Graph::Station* prevStationObjectPtr = nullptr;
+            if (i == 1) { // If this is the first segment, the previous station is the overall start
+                try {
+                    prevStationObjectPtr = &graph.getStationById(startId);
+                }
+                catch (...) { /* Handle error if startId not found */ }
+            }
+            else if (i > 1) {
+                try {
+                    prevStationObjectPtr = &graph.getStationById(segmentStartCode);
+                }
+                catch (...) {  }
+            }
+
+
+            if (prevStationObjectPtr) {
+                const Utilities::Coordinates& startCoords = prevStationObjectPtr->coordinates;
+                const Utilities::Coordinates& endCoords = currentVs.station.coordinates; // Coords of the station reached by this segment
+
+                double distance = Utilities::calculateHaversineDistance(startCoords, endCoords);
+                double segmentTime = 0.0;
+
+                if (lineTaken.id == "Walk") {
+                    // Use the dedicated walking calculation for consistency
+                    segmentTime = calculateWalkTime(startCoords, endCoords);
+                }
+                else if (isPublicTransport(lineTaken.type) && 
+                    distance > 0 && 
+                    ASSUMED_PUBLIC_TRANSPORT_SPEED_KPH > 0) {
+                        segmentTime = (distance / ASSUMED_PUBLIC_TRANSPORT_SPEED_KPH) * 60.0; // time in minutes
+                }
+                // Ignore "Start" line type for time calculation
+                totalEstimatedSegmentTime += segmentTime;
+            }
+            else {
+                std::cerr << "Warning: Could not find previous station object for segment " << i << " in getFitness." << std::endl;
+            }
+        }
+    }
+    // --- End of Estimated Time Calculation ---
+
+
+    // --- Existing Cost & Transfer Calculations ---
+    double totalCost = getTotalCost(graph); // Keep using existing cost calculation
+    int transfers = getTransferCount();     // Keep using existing transfer calculation
+
+    // --- Define weights/penalties (Adjust as needed) ---
     const double time_weight = 1.0;
     const double cost_weight = 0.1;
-    const double transfer_penalty = 45.0;   // High penalty per transfer
-    const double walk_penalty_factor = 15.0; // *** VERY HIGH walk penalty factor ***
-    const double stop_penalty = 1.0;        // Lower stop penalty to encourage staying on
+    const double transfer_penalty = 25.0; // Penalty per transfer (in equivalent minutes)
+    const double walk_penalty_factor = 2.0; // Make walking less desirable than its raw time suggests (e.g., 2x penalty)
+    const double stop_penalty = 0.0;        // Currently unused
 
     // --- Calculate Score ---
-    // 1. Base time includes all segments
-    double totalEffectiveTime = initialWalkTime + totalStationToStationTime + finalWalkTime;
 
-    // 2. Base score components
-    double score = (time_weight * totalEffectiveTime) +
+    double totalWalkTime = initialWalkTime; // Start with initial walk
+    for (size_t i = 1; i < _stations.size(); ++i) {
+        if (_stations[i].line.id == "Walk") {
+            // Re-calculate walk time for intermediate walks to apply penalty factor consistently
+            int segmentStartCode = _stations[i].prevStationCode;
+            const Graph::Station* prevStationObjectPtr = nullptr;
+            if (i == 1) { try { prevStationObjectPtr = &graph.getStationById(startId); } catch (...) {} }
+            else if (i > 1) { try { prevStationObjectPtr = &graph.getStationById(segmentStartCode); } catch (...) {} }
+
+            if (prevStationObjectPtr) {
+                totalWalkTime += calculateWalkTime(prevStationObjectPtr->coordinates, _stations[i].station.coordinates);
+            }
+        }
+    }
+    totalWalkTime += finalWalkTime; // Add final walk
+
+    // Calculate score: Base time + Penalties
+    // Base time = Estimated Public Transport Time + Raw Walk Time
+    double baseTime = totalEstimatedSegmentTime + initialWalkTime + finalWalkTime; // This contains estimated public transport + raw walk times
+
+    this->_estimatedBaseTime = baseTime;
+
+    double score = (time_weight * baseTime) +                  // Base time cost
+        (walk_penalty_factor - 1.0) * totalWalkTime + // ADDED penalty for ALL walking (factor-1 because base time already includes 1x walk time)
         (cost_weight * totalCost) +
         (transfers * transfer_penalty);
 
-    // 3. Add EXTRA penalty factor for ALL walking segments
-    double totalWalkPenalty = 0.0;
-    totalWalkPenalty += initialWalkTime * walk_penalty_factor; // Penalize initial walk
-    for (size_t i = 1; i < _stations.size(); ++i) { // Penalize intermediate walks
-        if (_stations[i].line.id == "Walk") {
-            // Note: travelTime for walk is already included in totalEffectiveTime via getTotalTime()
-            // This adds the *additional* penalty factor.
-            totalWalkPenalty += _stations[i].line.travelTime * walk_penalty_factor;
-        }
-    }
-    totalWalkPenalty += finalWalkTime * walk_penalty_factor; // Penalize final walk
-    score += totalWalkPenalty;
 
-    // 4. Add stop penalty (based only on station-to-station segments)
-    int num_segments = static_cast<int>(_stations.size()) - 1;
-    // Calculate stops based on segments *excluding* transfers to avoid double counting penalty?
-    int num_stops = std::max(0, num_segments - transfers); // Or simply num_segments if every leg counts
+    // 3. Add stop penalty (if needed - currently 0)
+    int num_segments = std::max(0, static_cast<int>(_stations.size()) - 1);
+    int num_stops = std::max(0, num_segments - transfers); // Approximation
     score += num_stops * stop_penalty;
 
     // --- Convert Score to Fitness ---
+    // Lower score is better, higher fitness is better
     if (score <= std::numeric_limits<double>::epsilon()) {
-        return std::numeric_limits<double>::max(); // Avoid division by zero
+        // Avoid division by zero, return a very large fitness for zero score (ideal route)
+        return std::numeric_limits<double>::max();
     }
-    // Fitness = 1 / score (higher score = lower fitness)
+    // Fitness = 1 / score
     return 1.0 / score;
 }
-
 
 // --- generatePathSegment (MODIFIED to use new VisitedStation) ---
 bool Route::generatePathSegment(int segmentStartId, int segmentEndId, const Graph& graph, std::mt19937& gen, std::vector<VisitedStation>& segment) {
@@ -352,7 +426,7 @@ bool Route::generatePathSegment(int segmentStartId, int segmentEndId, const Grap
             );
             if (const double MAX_WALKING_DISTANCE_SEGMENT = 0.5;
                 distanceToSegmentEnd < MAX_WALKING_DISTANCE_SEGMENT) {
-                Graph::TransportationLine walkingEdge("Walk", segmentEndId, (distanceToSegmentEnd / 5.0) * 60.0, 0, Graph::TransportMethod::Walk);
+                Graph::TransportationLine walkingEdge("Walk", segmentEndId, (distanceToSegmentEnd / 5.0) * 60.0, Graph::TransportMethod::Walk);
                 // *** Use correct prevCode when adding final walking step ***
                 segment.push_back(VisitedStation(destStation, walkingEdge, currentCode)); // currentCode is the station *before* the walk
                 currentCode = segmentEndId;
@@ -427,7 +501,7 @@ void Route::mutate(double mutationRate, std::mt19937& gen, int startId, int dest
         std::uniform_int_distribution<> index_dis(1, static_cast<int>(_stations.size() - 1));
         int restart_index = index_dis(gen);
         int segment_start_code;
-        try { segment_start_code = graph.getStationIdByName(_stations[restart_index - 1].station.name); }
+        try { segment_start_code = _stations[restart_index - 1].station.code; }
         catch (...) { return; } // Abort if prev station lookup fails
 
         std::vector<VisitedStation> new_segment;
@@ -461,7 +535,7 @@ void Route::mutate(double mutationRate, std::mt19937& gen, int startId, int dest
         const VisitedStation& segment_end_vs = _stations[idx2];
         int before_segment_code = before_segment_vs.prevStationCode; // Code before station idx1
         if (idx1 == 0) { // Special case if idx1 is the first station (shouldn't happen with distribution starting at 1, but safety)
-            try { before_segment_code = graph.getStationIdByName(before_segment_vs.station.name); }
+            try { before_segment_code = before_segment_vs.station.code; }
             catch (...) { return; }
         }
         else {
@@ -486,7 +560,7 @@ void Route::mutate(double mutationRate, std::mt19937& gen, int startId, int dest
             const double WALK_SPEED_KPH = 5.0;
             double walk_time = (walk_dist / WALK_SPEED_KPH) * 60.0; // time in minutes
 
-            Graph::TransportationLine walkLine("Walk", segment_end_code, walk_time, 0, Graph::TransportMethod::Walk);
+            Graph::TransportationLine walkLine("Walk", segment_end_code, walk_time, Graph::TransportMethod::Walk);
             VisitedStation walkStep(segment_end_vs.station, walkLine, before_segment_code); // Walk ends at station idx2, came from station idx1
 
             // --- Replace the segment ---
@@ -547,7 +621,7 @@ Route Route::crossover(const Route& parent1, const Route& parent2, std::mt19937&
     if (!commonIndices.empty()) {
         // Choose a random common station pair
         std::uniform_int_distribution<> common_dis(0, static_cast<int>(commonIndices.size() - 1));
-        auto [idx1, idx2] = commonIndices[common_dis(gen)]; // Indices in parent1 and parent2
+        const auto& [idx1, idx2] = commonIndices[common_dis(gen)]; // Indices in parent1 and parent2
 
         // Create child route by combining segments
         Route childRoute;
@@ -571,7 +645,7 @@ Route Route::crossover(const Route& parent1, const Route& parent2, std::mt19937&
 
 
 
-double Route::calculateWalkTime(const Utilities::Coordinates& c1, const Utilities::Coordinates& c2) const {
+double Route::calculateWalkTime(const Utilities::Coordinates& c1, const Utilities::Coordinates& c2) {
     double dist = Utilities::calculateHaversineDistance(c1, c2);
     if (dist < 0) return 0;
     return (dist / Route::WALK_SPEED_KPH) * 60.0; // minutes

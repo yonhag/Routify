@@ -21,7 +21,6 @@ namespace {
     };
 
     const Graph::TransportationLine& findLineInGraph(const Graph& graph, int fromCode, const std::string& lineId, int lineTo) {
-        // (Keep findLineInGraph as is)
         static Graph::TransportationLine dummyLine;
         try {
             const auto& lines = graph.getLinesFrom(fromCode);
@@ -63,7 +62,7 @@ namespace {
             catch (...) { continue; }
         }
 
-        // --- Reconstruct Path (MODIFIED) ---
+        // --- Reconstruct Path ---
         if (found) {
             std::vector<Route::VisitedStation> reversed_path;
             int traceCode = endCode;
@@ -79,7 +78,7 @@ namespace {
                     // Find the actual line object used
                     const Graph::TransportationLine& lineUsed =
                         (nodeInfo.parentCode == -1)
-                        ? Graph::TransportationLine("Start", startCode, 0, 0, Graph::TransportMethod::Walk) // Dummy start line
+                        ? Graph::TransportationLine("Start", startCode, 0, Graph::TransportMethod::Walk) // Dummy start line
                         : findLineInGraph(graph, nodeInfo.parentCode, nodeInfo.lineIdFromParent, nodeInfo.lineToFromParent);
 
                     if (lineUsed.id == "Error" && nodeInfo.parentCode != -1) return {}; // Line lookup failed
@@ -127,7 +126,7 @@ Population::Population(const int size, const int startId, const int destinationI
     }
     std::cout << "Generating initial population (" << size << " routes) using BFS + Mutation..." << std::endl;
 
-    // --- Step 1: Generate Baseline Route using NEW BFS ---
+    // --- Step 1: Generate Baseline Route using BFS ---
     std::vector<Route::VisitedStation> bfsPathStations = findPathBFS(_graph, _startId, _destinationId);
 
     if (bfsPathStations.empty()) {
@@ -148,18 +147,22 @@ Population::Population(const int size, const int startId, const int destinationI
     std::cout << "Generated baseline route via BFS (Length: " << bfsPathStations.size() << " steps)." << std::endl;
 
     // --- Step 2: Generate Remaining Population by Mutating ---
-    // (Mutation loop remains the same - relies on mutate function)
-    size_t routesNeeded = static_cast<size_t>(size);
-    size_t safetyCounter = 0; const size_t maxAttempts = routesNeeded * 10;
-    const int minMutationSteps = 5; const int maxMutationSteps = 20;
-    while (_routes.size() < routesNeeded && safetyCounter < maxAttempts) { /* ... mutation logic ... */
+    auto routesNeeded = static_cast<size_t>(size);
+    size_t safetyCounter = 0; 
+    const size_t maxAttempts = routesNeeded * 10;
+    const int minMutationSteps = 5; 
+    const int maxMutationSteps = 20;
+
+    while (_routes.size() < routesNeeded && safetyCounter < maxAttempts) {
         safetyCounter++; Route mutatedRoute = baseRoute;
         std::uniform_int_distribution<> numMutationsDist(minMutationSteps, maxMutationSteps);
         int mutationsToApply = numMutationsDist(_gen);
         for (int m = 0; m < mutationsToApply; ++m) { mutatedRoute.mutate(1.0, _gen, _startId, _destinationId, _graph); }
         if (mutatedRoute.isValid(_startId, _destinationId, _graph)) { _routes.push_back(mutatedRoute); }
     }
+    
     std::cout << "Generated " << _routes.size() << " initial routes total (using " << safetyCounter << " mutation attempts)." << std::endl;
+    
     if (_routes.empty()) { throw std::runtime_error("Population became empty after mutation phase."); }
     if (_routes.size() < routesNeeded) { std::cerr << "Warning: Could only generate " << _routes.size() << "/" << size << " valid routes via BFS+Mutation." << std::endl; }
 }
@@ -259,7 +262,6 @@ void Population::evolve(const int generations, const double mutationRate) {
 // Returns the best route found
 const Route& Population::getBestSolution() const {
     if (_routes.empty()) {
-        // This should only happen if initialization failed or population went extinct
         throw std::runtime_error("Error: Attempted to get best solution from an empty or extinct population.");
     }
     // Find the element with the maximum fitness
@@ -305,6 +307,5 @@ void Population::performSelection() {
 // Getter for current routes
 std::vector<Route> Population::getRoutes() const
 {
-    // Return by value creates a copy
     return this->_routes;
 }

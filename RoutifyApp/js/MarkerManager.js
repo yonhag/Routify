@@ -41,23 +41,7 @@ class MarkerManager {
                  console.log("MarkerManager: actionPointMarkers added to map.");
             }
         } else {
-            console.warn("MarkerManager: Map not ready. Layers not added yet.");
-            // You might need a mechanism to call tryAddLayersToMap() again
-            // once the map *is* ready, e.g., triggered by an event from MapManager.
-        }
-    }
-
-    /**
-     * Initializes the layer group and adds it to the map.
-     * Must be called after the map instance is created.
-     */
-    initializeLayers() {
-        this.map = this.mapManager.getMapInstance();
-        if (this.map) {
-            this.routeLayer = L.layerGroup().addTo(this.map);
-            console.log("Route display layer group created and added to map.");
-        } else {
-            console.error("Cannot initialize marker layers: Map instance not available.");
+            null;
         }
     }
 
@@ -67,126 +51,194 @@ class MarkerManager {
      */
     addRouteDisplayFromSteps(steps, userLocation, destinationCoords) {
         const map = this.mapManager.getMapInstance();
-        if (!map || !this.routeLayer || !this.actionPointMarkers) {
-            console.error("Cannot display route: Map or required layer groups not available.");
-            return;
-        }
-        if (!steps || steps.length === 0) { /* ... error handling ... */ return; }
-        if (!userLocation) { /* ... */ return; }
-        if (!destinationCoords) { /* ... */ return; }
+        // --- Initial validation ---
+        if (!map || !this.routeLayer || !this.actionPointMarkers) { console.error("Cannot display route: Map or layers not ready."); return; }
+        if (!steps || steps.length === 0) { console.warn("Cannot display route: No steps provided."); return; }
+        if (!userLocation || !this.isValidCoordinate([userLocation.lat, userLocation.lng])) { console.error("Cannot display route: Invalid userLocation."); return; }
+        if (!destinationCoords || !this.isValidCoordinate([destinationCoords.lat, destinationCoords.lng])) { console.error("Cannot display route: Invalid destinationCoords."); return; }
+        // ---
 
         this.clearRouteDisplay();
-        let allRoutePoints = [];
+        let allRoutePoints = []; // For bounds calculation
         const walkStyle = { color: 'green', weight: 4, opacity: 0.7, dashArray: '8, 8' };
-        // --- Define styles for markers ---
-        const actionMarkerOptions = { // For start/end/transfer points (Orange Markers)
-             // Use default Leaflet icon or define your own L.icon here
-             title: "Action Point" // Default title
-        };
-        const intermediateStopOptions = { // For pass-through stops (Smaller Circles)
-            radius: 3, // Smaller radius
-            color: '#555', // Dark grey outline
-            weight: 1,
-            fillColor: '#888', // Lighter grey fill
-            fillOpacity: 0.7,
-            title: "Intermediate Stop" // Default title
-        };
-        // --- End marker styles ---
+        const actionMarkerOptions = { title: "Action Point" };
+        const intermediateStopOptions = { radius: 3, color: '#555', weight: 1, fillColor: '#888', fillOpacity: 0.7, title: "Intermediate Stop" };
 
-
-        // --- 1. Draw Initial Walk Line ---
-        // ... (no changes needed here) ...
-        const firstStationCoords = [steps[0].from_lat, steps[0].from_long];
+        // --- 1. Initial Walk ---
+        const firstStepFromCoords = [steps[0].from_lat, steps[0].from_long];
         const userCoords = [userLocation.lat, userLocation.lng];
-         if (userCoords[0] !== firstStationCoords[0] || userCoords[1] !== firstStationCoords[1]) {
-             const initialWalkPolyline = L.polyline([userCoords, firstStationCoords], walkStyle);
-             this.routeLayer.addLayer(initialWalkPolyline);
-             allRoutePoints.push(userCoords, firstStationCoords);
-         } else { allRoutePoints.push(userCoords); }
+        if (!this.isValidCoordinate(firstStepFromCoords)) { console.error("Invalid coords for first step 'from'.", steps[0]); return; }
+        // Draw initial walk if user location is different from the first station
+        if (Math.abs(userCoords[0] - firstStepFromCoords[0]) > 0.00001 || Math.abs(userCoords[1] - firstStepFromCoords[1]) > 0.00001) {
+            const initialWalkPolyline = L.polyline([userCoords, firstStepFromCoords], walkStyle);
+            this.routeLayer.addLayer(initialWalkPolyline);
+            allRoutePoints.push(userCoords, firstStepFromCoords);
+        } else {
+            allRoutePoints.push(userCoords); // Start point for bounds
+        }
 
-        // --- 2. Draw Transit/Intermediate Walk Segments (Loop) ---
-        steps.forEach(step => {
+        // --- 2. Determine Loop End and Final Step Type ---
+        const lastStepIndex = steps.length - 1;
+        const isLastStepWalk = steps[lastStepIndex].line_id === 'Walk';
+        // Loop up to the second-to-last step, or not at all if only one step
+        const loopEndIndex = steps.length > 1 ? lastStepIndex - 1 : -1;
+
+        // --- 3. Loop Through Steps (Excluding the Final One) ---
+        for (let i = 0; i <= loopEndIndex; i++) {
+            const step = steps[i];
             const fromCoords = [step.from_lat, step.from_long];
             const toCoords = [step.to_lat, step.to_long];
-            let segmentPoints = [fromCoords];
-            let intermediateMarkers = []; // Store intermediate markers for this segment
 
-            // --- Process Intermediate Stops ---
+            if (!this.isValidCoordinate(fromCoords) || !this.isValidCoordinate(toCoords)) {
+                console.warn(`Invalid coords in step ${i}, skipping drawing.`, step);
+                continue;
+            }
+
+            let segmentPoints = [fromCoords];
+            let intermediateMarkers = [];
+
+            // Add intermediate stops for this segment
             if (step.intermediate_stops && Array.isArray(step.intermediate_stops)) {
                 step.intermediate_stops.forEach(interStop => {
                     const interCoords = [interStop.lat, interStop.long];
-                    segmentPoints.push(interCoords);
-                    // Create a smaller circle marker for the intermediate stop
-                    const interMarker = L.circleMarker(interCoords, {
-                        ...intermediateStopOptions, // Spread the options object
-                        title: interStop.name || intermediateStopOptions.title // Use station name if available
-                    });
-                    interMarker.bindPopup(`Pass through: ${interStop.name || 'Intermediate Stop'}`);
-                    intermediateMarkers.push(interMarker); // Add to list
+                    if (this.isValidCoordinate(interCoords)) {
+                        segmentPoints.push(interCoords);
+                        const interMarker = L.circleMarker(interCoords, { ...intermediateStopOptions, title: interStop.name || 'Intermediate Stop' }).bindPopup(`Pass through: ${interStop.name || 'Stop'}`);
+                        intermediateMarkers.push(interMarker);
+                    }
                 });
             }
-            // --- End Intermediate Stops ---
-
             segmentPoints.push(toCoords);
-            allRoutePoints.push(...segmentPoints.slice(1));
+            allRoutePoints.push(...segmentPoints.slice(1)); // Add segment points for bounds
 
-            // Determine line style (no change)
+            // Determine style and draw polyline
             let style;
-             if (step.line_id === 'Walk') { style = walkStyle; }
-             else if (step.line_id === 'Start') { style = { color: 'transparent' }; }
-             else { style = { color: 'blue', weight: 5, opacity: 0.8 }; }
+            if (step.line_id === 'Walk') { style = walkStyle; }
+            else if (step.line_id === 'Start') { style = { color: 'transparent' }; }
+            else { style = { color: 'blue', weight: 5, opacity: 0.8 }; }
 
-            // Draw polyline (no change)
             if (step.line_id !== 'Start') {
                 const polyline = L.polyline(segmentPoints, style);
                 this.routeLayer.addLayer(polyline);
             }
 
-            // --- Add Markers (Action Points and Intermediate) ---
-            // Add intermediate markers for this segment
+            // Add Markers (Intermediate and Action Points for this step)
             intermediateMarkers.forEach(mkr => this.actionPointMarkers.addLayer(mkr));
-
-            // Add markers for action points (Orange/Default Markers)
             let actionDesc = step.action_description || 'Waypoint';
+            // FROM marker
             if (step.from_is_action_point) {
-                const markerTitle = (step.segment_index === 0) ? `Start Station: ${step.from_name}` : step.from_name;
-                const markerPopup = (step.segment_index === 0) ? `<b>Start Station</b><br>${step.from_name}` : `<b>${actionDesc}</b><br>${step.from_name}`;
-                // Use actionMarkerOptions (could be default or custom L.icon)
+                const markerTitle = (i === 0) ? `Start Station: ${step.from_name}` : step.from_name;
+                const markerPopup = (i === 0) ? `<b>Start Station</b><br>${step.from_name}` : `<b>${actionDesc}</b><br>${step.from_name}`;
                 const marker = L.marker(fromCoords, { ...actionMarkerOptions, title: markerTitle }).bindPopup(markerPopup);
                 this.actionPointMarkers.addLayer(marker);
             }
-            const isFinalStation = (step.segment_index === steps.length - 1);
+            // TO marker (only if it's an action point for *this* step)
             if (step.to_is_action_point) {
-                 const markerTitle = isFinalStation ? `End Station: ${step.to_name}` : step.to_name;
-                 const markerPopup = isFinalStation ? `<b>End Station</b><br>${step.to_name}` : `<b>${actionDesc}</b><br>${step.to_name}`;
-                 // Use actionMarkerOptions
+                 const markerTitle = step.to_name; // No special "End Station" logic here, that's handled later
+                 const markerPopup = `<b>${actionDesc}</b><br>${step.to_name}`;
                  const marker = L.marker(toCoords, { ...actionMarkerOptions, title: markerTitle }).bindPopup(markerPopup);
                  this.actionPointMarkers.addLayer(marker);
+            }
+        } // --- End Main Loop ---
+
+
+        // --- 4. Handle the FINAL Connection ---
+        const actualDestCoords = [destinationCoords.lat, destinationCoords.lng];
+        let finalOriginCoords; // Coords of the point where the *very last segment* starts
+
+        if (steps.length === 1) { // Only one step in the whole route
+            finalOriginCoords = [steps[0].from_lat, steps[0].from_long];
+             // If the single step was walk, origin might effectively be user start
+             if (isLastStepWalk && (Math.abs(userCoords[0] - finalOriginCoords[0]) < 0.00001 && Math.abs(userCoords[1] - finalOriginCoords[1]) < 0.00001)) {
+                  finalOriginCoords = userCoords; // Use user coords if first step walk matches user location
              }
-            // --- End Add Markers ---
 
-        }); // End loop through steps
+        } else { // More than one step
+            // The origin is the end point of the second-to-last step
+            finalOriginCoords = [steps[lastStepIndex - 1].to_lat, steps[lastStepIndex - 1].to_long];
+        }
+
+        // --- Validate finalOriginCoords ---
+        if (!this.isValidCoordinate(finalOriginCoords)) {
+            console.error("Could not determine valid origin for the final segment connection.");
+        } else {
+            // --- Draw the final segment ---
+            if (isLastStepWalk) {
+                // Last calculated step was 'Walk'. Draw straight from previous point to ACTUAL destination.
+                console.log("[MarkerManager] Final step is Walk. Drawing connection from previous step end directly to destination.");
+                const finalWalkPolyline = L.polyline([finalOriginCoords, actualDestCoords], walkStyle);
+                this.routeLayer.addLayer(finalWalkPolyline);
+                allRoutePoints.push(actualDestCoords); // Add actual destination for bounds
+
+                // **Crucially, do NOT add a marker for the intermediate station of the original walk step.**
+
+            } else {
+                // Last calculated step was NOT 'Walk' (e.g., Bus/Train).
+                // Draw that last transit step first.
+                console.log("[MarkerManager] Final step is transit. Drawing transit segment first.");
+                const lastStep = steps[lastStepIndex];
+                const lastStepFromCoords = [lastStep.from_lat, lastStep.from_long]; // Should match finalOriginCoords
+                const lastStepToCoords = [lastStep.to_lat, lastStep.to_long]; // Endpoint of the transit
+
+                if (this.isValidCoordinate(lastStepFromCoords) && this.isValidCoordinate(lastStepToCoords)) {
+                     let segmentPoints = [lastStepFromCoords];
+                     // Add intermediate stops for the *very last* transit step
+                     if (lastStep.intermediate_stops && Array.isArray(lastStep.intermediate_stops)) {
+                         lastStep.intermediate_stops.forEach(interStop => {
+                             const interCoords = [interStop.lat, interStop.long];
+                             if (this.isValidCoordinate(interCoords)) {
+                                 segmentPoints.push(interCoords);
+                                 const interMarker = L.circleMarker(interCoords, { ...intermediateStopOptions, title: interStop.name || 'Intermediate Stop' }).bindPopup(`Pass through: ${interStop.name || 'Stop'}`);
+                                 this.actionPointMarkers.addLayer(interMarker); // Add intermediate markers
+                             }
+                         });
+                     }
+                     segmentPoints.push(lastStepToCoords);
+                     allRoutePoints.push(...segmentPoints.slice(1)); // Add points for bounds
+
+                    // Draw the final transit polyline
+                     const style = { color: 'blue', weight: 5, opacity: 0.8 }; // Assume transit style
+                     const polyline = L.polyline(segmentPoints, style);
+                     this.routeLayer.addLayer(polyline);
+
+                     // Add marker at the end of the final transit step
+                     if (lastStep.to_is_action_point) {
+                          const markerTitle = `End Station: ${lastStep.to_name}`;
+                          const markerPopup = `<b>${lastStep.action_description || 'Arrive'}</b><br>${lastStep.to_name}`;
+                          const marker = L.marker(lastStepToCoords, { ...actionMarkerOptions, title: markerTitle }).bindPopup(markerPopup);
+                          this.actionPointMarkers.addLayer(marker);
+                      }
+
+                    // **NOW, draw the connecting walk if needed**
+                    if (Math.abs(lastStepToCoords[0] - actualDestCoords[0]) > 0.00001 || Math.abs(lastStepToCoords[1] - actualDestCoords[1]) > 0.00001) {
+                        console.log("[MarkerManager] Drawing final connecting walk from end of transit to actual destination.");
+                        const finalConnectingWalk = L.polyline([lastStepToCoords, actualDestCoords], walkStyle);
+                        this.routeLayer.addLayer(finalConnectingWalk);
+                        allRoutePoints.push(actualDestCoords); // Add actual destination for bounds
+                    }
+                } else {
+                     console.error("Invalid coordinates for the final transit step.", lastStep);
+                 }
+            }
+        }
 
 
-        // --- 3. Draw Final Walk Line ---
-        // ... (no changes needed here) ...
-        const lastStationCoords = [steps[steps.length - 1].to_lat, steps[steps.length - 1].to_long];
-        const destCoords = [destinationCoords.lat, destinationCoords.lng];
-         if (lastStationCoords[0] !== destCoords[0] || lastStationCoords[1] !== destCoords[1]) {
-             const finalWalkPolyline = L.polyline([lastStationCoords, destCoords], walkStyle);
-             this.routeLayer.addLayer(finalWalkPolyline);
-             allRoutePoints.push(destCoords);
-         } else {
-             if (allRoutePoints.length === 0 || allRoutePoints[allRoutePoints.length-1][0] !== lastStationCoords[0] || allRoutePoints[allRoutePoints.length-1][1] !== lastStationCoords[1] ){
-                  allRoutePoints.push(lastStationCoords);
-             }
-         }
-
-        // --- Fit Bounds ---
-        // ... (no change) ...
-         if (allRoutePoints.length > 0) { map.flyToBounds(L.latLngBounds(allRoutePoints), { padding: [50, 50], maxZoom: 17 }); }
+        // --- 5. Fit Bounds ---
+        const validPointsForBounds = allRoutePoints.filter(coord => this.isValidCoordinate(coord));
+        if (validPointsForBounds.length > 0) {
+            console.log(`[MarkerManager] Fitting bounds to ${validPointsForBounds.length} valid points.`);
+            map.flyToBounds(L.latLngBounds(validPointsForBounds), { padding: [50, 50], maxZoom: 17 });
+        } else {
+            console.warn("Cannot fit bounds: No valid points found in the route.");
+        }
 
     } // End addRouteDisplayFromSteps
+
+
+    // isValidCoordinate helper function should be present within the class or file
+    isValidCoordinate(coord) {
+        return Array.isArray(coord) && coord.length === 2 && typeof coord[0] === 'number' && typeof coord[1] === 'number' && !isNaN(coord[0]) && !isNaN(coord[1]);
+    }
 
  // --- Definition of addDestinationMarker ---
     /**
@@ -208,14 +260,8 @@ class MarkerManager {
         // 2. Define marker options (customize icon later if desired)
         const markerOptions = {
             title: "Destination" // Tooltip text on hover
-            // Example custom icon (requires defining destinationIcon):
-            // icon: L.icon({
-            //     iconUrl: 'path/to/destination-flag-icon.png',
-            //     iconSize: [25, 41], // size of the icon
-            //     iconAnchor: [12, 41], // point of the icon which will correspond to marker's location
-            //     popupAnchor: [1, -34] // point from which the popup should open relative to the iconAnchor
-            // })
         };
+        this.clearRouteDisplay();
 
         // 3. Create the new Leaflet marker
         this.destinationMarker = L.marker([lat, lng], markerOptions);
@@ -246,12 +292,28 @@ class MarkerManager {
     /**
      * Removes all markers and polylines from the route layer group.
      */
-    clearRouteDisplay() { // Renamed for clarity
+    clearRouteDisplay() { // Renamed for clarity, now updated
+        let clearedSomething = false;
         if (this.routeLayer) {
             this.routeLayer.clearLayers();
-            console.log("Route display cleared.");
+            clearedSomething = true;
+            // console.log("Route display (lines) cleared."); // Keep logging minimal or combine
         } else {
-            console.warn("Attempted to clear route display, but routeLayer was not initialized.");
+            console.warn("Attempted to clear route display lines, but routeLayer was not initialized.");
+        }
+
+        // --- ADD THIS BLOCK ---
+        if (this.actionPointMarkers) {
+            this.actionPointMarkers.clearLayers();
+            clearedSomething = true;
+            // console.log("Route display (action/intermediate markers) cleared.");
+        } else {
+            console.warn("Attempted to clear route action point markers, but actionPointMarkers was not initialized.");
+        }
+        // --- END ADDED BLOCK ---
+
+        if (clearedSomething) {
+             console.log("Route display (lines and markers) cleared.");
         }
     }
 

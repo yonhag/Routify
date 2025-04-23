@@ -72,13 +72,10 @@ void RequestHandler::handleRequest(Socket clientSocket)
     std::cout << "Socket closed!" << std::endl;
 }
 
-
-// --- Public Handlers (remain as entry points) ---
-
 // --- Helper Handlers for Different Request Types ---
 
 // Handles request type 0: Get lines from a station
-json RequestHandler::handleGetLines(const json& request_json) {
+json RequestHandler::handleGetLines(const json& request_json) const {
     int stationId = request_json.value("stationId", -1);
     if (stationId == -1 || !_graph.hasStation(stationId)) {
         return { {"error", "Invalid or missing stationId"} };
@@ -101,75 +98,154 @@ json RequestHandler::handleGetLines(const json& request_json) {
         catch (...) {
             lineObj["to_name"] = "[Station Code Not Found]"; // Handle case where 'to' code might be invalid
         }
-        // Add other relevant line info if needed (e.g., type, travelTime?)
+        // Add other relevant line info if needed (e.g., type, travelTime)
         lineArray.push_back(lineObj);
     }
     return { {"stationId", stationId}, {"lines", lineArray} };
 }
 
 // Handles request type 1: Get station details
-json RequestHandler::handleGetStationInfo(const json& request_json) {
+json RequestHandler::handleGetStationInfo(const json& request_json) const {
     int stationId = request_json.value("stationId", -1);
     if (stationId == -1 || !_graph.hasStation(stationId)) {
         return { {"error", "Invalid or missing stationId"} };
     }
-    // No try-catch needed here as hasStation was checked, getStationById should succeed
+
     const Graph::Station& st = _graph.getStationById(stationId);
-    json stationJson = st; // Uses the to_json overload for Graph::Station
-    stationJson["code"] = stationId; // Add the code to the response
+    json stationJson = st;
+    
+    stationJson["code"] = stationId;
+
     return stationJson;
 }
 
 
-// --- Refactored Top-Level Coordinate Route Handler ---
+// --- Top-Level Coordinate Route Handler ---
 json RequestHandler::handleFindRouteCoordinates(const json& request_json) {
     std::cout << "Handling Coordinate Route Request (Optimized Pairs)..." << std::endl;
 
-    // 1. Extract & Validate Input (no change)
+    // 1. Extract & Validate Input
     RequestData inputData;
     json errorJson = extractAndValidateCoordinateInput(request_json, inputData);
     if (!errorJson.is_null()) return errorJson;
 
-    // 2. Find ALL Nearby Stations for Start and End
+    // 2. Find ALL Nearby Stations
     NearbyStations allFoundStations;
     errorJson = findNearbyStationsForRoute(inputData, allFoundStations);
     if (!errorJson.is_null()) return errorJson;
 
-    // 3. Select Representative START Stations (Closest, Mid, Furthest)
-    StationList selectedStartStations; // This will hold up to 3 start stations
+    // 3. Select Representative START Stations
+    StationList selectedStartStations;
     selectRepresentativeStations(inputData.startCoords.latitude, inputData.startCoords.longitude, allFoundStations.startStations, selectedStartStations);
     if (selectedStartStations.empty()) {
-        return { {"error", "Failed to select any representative start stations (initial list empty?)"} };
+        return { {"error", "Failed to select any representative start stations"} };
     }
 
     // 4. Select ONLY the CLOSEST END Station
     std::optional<StationPair> closestEndStationOpt = selectClosestStation(inputData.endCoords.latitude, inputData.endCoords.longitude, allFoundStations.endStations);
     if (!closestEndStationOpt.has_value()) {
-        return { {"error", "Failed to select the closest end station (no nearby end stations found?)"} };
+        return { {"error", "Failed to select the closest end station"} };
     }
-    const StationPair& closestEndStationPair = closestEndStationOpt.value(); // Get the pair
+    const StationPair& closestEndStationPair = closestEndStationOpt.value();
 
-    // 5. Find Best Route Among SELECTED Start Stations and SINGLE End Station
-    std::optional<BestRouteResult> bestResult = findBestRouteToDestination(
-        selectedStartStations,      // List of start stations
-        closestEndStationPair,      // Single end station
-        inputData                   // GA Parameters
+    // 5. Find Best Route Among SELECTED Pairs
+    std::optional<BestRouteResult> bestResultOpt = findBestRouteToDestination(
+        selectedStartStations,
+        closestEndStationPair,
+        inputData
     );
 
-    // 6. Format Response (no change)
-    if (!bestResult.has_value()) {
-        return { {"status", "No valid route found between selected start stations and the closest end station"} };
+    // 6. Post-Process and Format Response
+    if (!bestResultOpt.has_value()) {
+        return { {"status", "No valid route found between selected stations"} };
     }
     else {
-        return formatRouteResponse(bestResult.value());
-    }
+        BestRouteResult bestResult = bestResultOpt.value(); // Get the result object
+
+        // --- *** START OF SIMPLIFIED POST-PROCESSING LOGIC *** ---
+        try {
+            std::vector<Route::VisitedStation>& stations = bestResult.route.getMutableVisitedStations();
+
+            // Check if route ends with two consecutive walks
+            if (stations.size() >= 2 &&
+                stations.back().line.id == "Walk" &&
+                stations[stations.size() - 2].line.id == "Walk")
+            {
+                std::cout << "Post-processing: Found consecutive final walks. Merging into single direct walk..." << std::endl;
+
+                // The station where the second-to-last walk *started* is our real origin point.
+                const Route::VisitedStation& stationBeforeDoubleWalk = stations[stations.size() - 2];
+                int originCode = stationBeforeDoubleWalk.prevStationCode; // Code of the station *before* the two walks
+
+                Utilities::Coordinates originCoords;
+
+                // Determine the coordinates of the origin point
+                if (stations.size() == 2) {
+                    // The entire route was Walk -> Station A -> Walk. Origin is user start.
+                    originCoords = inputData.startCoords;
+                    // The previous station code for the new final step indicates user start
+                    originCode = -2; // Use a special marker for "User Start"
+                } else {
+                    // The origin is a regular station in the graph
+                    // Find the coordinates of the station identified by originCode
+                     try {
+                         originCoords = _graph.getStationById(originCode).coordinates;
+                     } catch (const std::exception& e) {
+                         std::cerr << "Error post-processing: Cannot find origin station " << originCode << ". Skipping merge. Details: " << e.what() << std::endl;
+                         goto end_post_processing; // Skip the rest of the merge logic
+                     }
+                }
+
+                // Target is the final destination coordinates
+                const Utilities::Coordinates& targetCoords = inputData.endCoords;
+
+                // Calculate the direct walk time from the origin point to the target coordinates
+                double directWalkTime = Route::calculateWalkTime(originCoords, targetCoords);
+
+                // We still need the final destination *Station* object for the VisitedStation struct,
+                // even though the walk calculation uses target coordinates.
+                const Graph::Station& finalDestinationStation = _graph.getStationById(bestResult.endStationId);
+
+                // Create the new single, direct walk line
+                Graph::TransportationLine directFinalWalkLine(
+                    "Walk",
+                    bestResult.endStationId, // Line 'to' remains the destination station ID
+                    directWalkTime,
+                    Graph::TransportMethod::Walk
+                );
+
+                // Create the new final VisitedStation step
+                Route::VisitedStation directFinalWalkVs(
+                    finalDestinationStation, // Station object represents the destination
+                    directFinalWalkLine,     // Line taken is the new direct walk
+                    originCode               // Came from origin station (or -2 for user start)
+                );
+
+                // Replace the last two steps with the single direct walk
+                stations.pop_back(); // Remove original final walk
+                stations.pop_back(); // Remove intermediate walk
+                stations.push_back(directFinalWalkVs); // Add the new direct walk
+
+                std::cout << "Post-processing: Merge complete." << std::endl;
+            } // end if two walks
+        } catch (const std::exception& e) {
+            std::cerr << "Error during route post-processing (walk merge): " << e.what() << std::endl;
+            // Continue with the original route if post-processing fails
+        }
+        // --- *** END OF POST-PROCESSING LOGIC *** ---
+
+      end_post_processing:; // Label for potential goto skip
+
+        // Format the potentially modified route
+        return formatRouteResponse(bestResult);
+    } // end else (route found)
 }
 
 
 // --- PRIVATE HELPER FUNCTIONS ---
 
 // Helper 1: Extract and Validate Input
-json RequestHandler::extractAndValidateCoordinateInput(const json& request_json, RequestData& inputData) {
+json RequestHandler::extractAndValidateCoordinateInput(const json& request_json, RequestData& inputData) const {
     if (!request_json.contains("startLat") || !request_json.contains("startLong") ||
         !request_json.contains("endLat") || !request_json.contains("endLong")) {
         return { {"error", "Missing start or end coordinates (lat/long)"} };
@@ -180,7 +256,7 @@ json RequestHandler::extractAndValidateCoordinateInput(const json& request_json,
         inputData.endCoords.latitude = request_json["endLat"].get<double>();
         inputData.endCoords.longitude = request_json["endLong"].get<double>();
         if (!inputData.startCoords.isValid() || !inputData.endCoords.isValid()) {
-            throw std::runtime_error("Invalid coordinate range.");
+            return { {"error", "Invalid coordinates" } };
         }
         // Extract optional GA params
         inputData.generations = request_json.value("gen", 200);
@@ -200,7 +276,7 @@ json RequestHandler::extractAndValidateCoordinateInput(const json& request_json,
 }
 
 // Helper 2: Find Nearby Stations
-json RequestHandler::findNearbyStationsForRoute(const RequestData& inputData, NearbyStations& foundStations) {
+json RequestHandler::findNearbyStationsForRoute(const RequestData& inputData, NearbyStations& foundStations) const {
     std::cout << "Finding nearby stations for start: " << inputData.startCoords.latitude << "," << inputData.startCoords.longitude << std::endl;
     foundStations.startStations = _graph.getNearbyStations(Utilities::Coordinates(inputData.startCoords.latitude, inputData.startCoords.longitude));
     if (foundStations.startStations.empty()) {
@@ -278,7 +354,7 @@ RequestHandler::GaTaskResult RequestHandler::runSingleGaTask(
 std::optional<RequestHandler::BestRouteResult> RequestHandler::findBestRouteToDestination(
     const StationList& selectedStartStations,
     const StationPair& endStationPair,
-    const RequestData& gaParams)
+    const RequestData& gaParams) const
 {
     BestRouteResult overallBest; // Holds the final best result (from BestRouteResult struct)
     overallBest.fitness = -1.0; // Initialize fitness to invalid
@@ -360,10 +436,11 @@ std::optional<RequestHandler::BestRouteResult> RequestHandler::findBestRouteToDe
 
 
 // Helper 5: Format the successful route response JSON
+// Also finds stations along the way since the GA doesn't account for them
 // RequestHandler.cpp
 
 // Helper: Format the successful route response JSON (MODIFIED)
-json RequestHandler::formatRouteResponse(const BestRouteResult& bestResult) {
+json RequestHandler::formatRouteResponse(const BestRouteResult& bestResult) const {
     json resultJson;
     try {
         // Use the stored start/end station IDs from BestRouteResult
@@ -381,95 +458,137 @@ json RequestHandler::formatRouteResponse(const BestRouteResult& bestResult) {
     resultJson["status"] = "Route found";
     resultJson["summary"] = {
         {"fitness", bestResult.fitness},
-        {"time_mins", bestResult.route.getTotalTime()},
-        {"cost", bestResult.route.getTotalCost(this->_graph)},
-        // Make sure getTransferCount() is updated as per previous discussion
+        {"time_mins", bestResult.route.getEstimatedBaseTime()},
+        {"cost", bestResult.route.getTotalCost(this->_graph)}, // Uses optimized cost
         {"transfers", bestResult.route.getTransferCount()}
     };
 
-    json detailedStepsJson = json::array(); // Rename to avoid confusion
+    json detailedStepsJson = json::array();
 
-    if (visitedStations.size() >= 2) {
+    if (visitedStations.size() >= 2) { // Need at least Start -> End
         for (size_t i = 0; i < visitedStations.size() - 1; ++i) {
-            const auto& currentVs = visitedStations[i];     // Action point where segment starts
-            const auto& nextVs = visitedStations[i + 1];    // Action point where segment ends
-            const auto& lineTaken = nextVs.line;            // Line taken for this segment
+            // --- Action Point Info ---
+            // Action point where the segment *starts* (or the overall route start)
+            const auto& startActionPointVs = visitedStations[i];
+            // Action point where the segment *ends*
+            const auto& endActionPointVs = visitedStations[i + 1];
+            // Line taken *to reach* the endActionPointVs
+            const auto& lineTaken = endActionPointVs.line;
 
-            // --- Get Codes for this Segment ---
-            // Code of the station where this segment *actually* starts
-            int segmentStartCode = (i == 0) ? bestResult.startStationId : visitedStations[i].line.to;
-            // Code of the station where this segment *actually* ends
-            int segmentEndCode = nextVs.line.to;
+            // --- Determine Actual Segment Start/End Codes ---
+            int segmentStartCode;
+            if (i == 0) {
+                segmentStartCode = bestResult.startStationId; // Overall route start
+            }
+            else {
+                // For segment i>0, it starts where segment i-1 ended.
+                segmentStartCode = startActionPointVs.station.code; // The code of the station *at* the start action point
+            }
+            // The segment ends at the station represented by endActionPointVs
+            int segmentEndCode = endActionPointVs.station.code; // The code of the station *at* the end action point
+
 
             json stepJson; // JSON object for this segment
             stepJson["segment_index"] = i;
-            stepJson["line_id"] = lineTaken.id;
+            stepJson["line_id"] = lineTaken.id; // ID of the line used for *this* segment
 
-            // --- Action Point Info (Departure) ---
-            const Graph::Station& fromStation = _graph.getStationById(segmentStartCode); // Get station object
-            stepJson["from_name"] = fromStation.name;
-            stepJson["from_code"] = segmentStartCode;
-            stepJson["from_lat"] = fromStation.coordinates.latitude;
-            stepJson["from_long"] = fromStation.coordinates.longitude;
+            // --- Get Station Info for Segment Start/End ---
+            try {
+                const Graph::Station& fromStation = _graph.getStationById(segmentStartCode);
+                stepJson["from_name"] = fromStation.name;
+                stepJson["from_code"] = segmentStartCode;
+                stepJson["from_lat"] = fromStation.coordinates.latitude;
+                stepJson["from_long"] = fromStation.coordinates.longitude;
 
-            // --- Action Point Info (Arrival) ---
-            const Graph::Station& toStation = _graph.getStationById(segmentEndCode); // Get station object
-            stepJson["to_name"] = toStation.name;
-            stepJson["to_code"] = segmentEndCode;
-            stepJson["to_lat"] = toStation.coordinates.latitude;
-            stepJson["to_long"] = toStation.coordinates.longitude;
+                const Graph::Station& toStation = _graph.getStationById(segmentEndCode);
+                stepJson["to_name"] = toStation.name;
+                stepJson["to_code"] = segmentEndCode;
+                stepJson["to_lat"] = toStation.coordinates.latitude;
+                stepJson["to_long"] = toStation.coordinates.longitude;
+            }
+            catch (const std::exception& e) {
+                std::cerr << "Error formatting step " << i << ": Cannot get station info. " << e.what() << std::endl;
+                // Add error info or skip step?
+                stepJson["error"] = "Failed to get station details for segment.";
+                detailedStepsJson.push_back(stepJson);
+                continue;
+            }
 
-            // --- Reconstruct and Add Intermediate Stops ---
-            bool isPublic = lineTaken.id != "Walk" && lineTaken.id != "Start"; // Check if public transport
-            json intermediateStopsJson = json::array(); // Array for intermediate stops of *this* segment
+
+            // --- Reconstruct and Add Intermediate Stops using getStationsAlongLineSegment ---
+            bool isPublic = lineTaken.id != "Walk" && lineTaken.id != "Start";
+            json intermediateStopsJson = json::array();
 
             if (isPublic && segmentStartCode != segmentEndCode) {
-                std::vector<Graph::Station> intermediateStations = reconstructIntermediateStops(
-                    segmentStartCode,
-                    segmentEndCode,
-                    lineTaken.id,
-                    _graph); // Pass the graph by const reference
+                try {
+                    // ***** CALL THE ORIGINAL FUNCTION *****
+                    std::vector<Graph::Station> segmentPathStations = _graph.getStationsAlongLineSegment(
+                        lineTaken.id,
+                        segmentStartCode,
+                        segmentEndCode);
 
-                for (const auto& interStation : intermediateStations) {
-                    intermediateStopsJson.push_back({
-                        {"code", _graph.getStationIdByName(interStation.name)}, // Need a way to get ID back - might need graph changes or store ID in Station
-                        {"name", interStation.name},
-                        {"lat", interStation.coordinates.latitude},
-                        {"long", interStation.coordinates.longitude}
-                        });
+                    // The result includes start and end, we only want intermediates
+                    // Iterate from the second station up to the second-to-last station
+                    if (segmentPathStations.size() > 2) {
+                        for (size_t j = 1; j < segmentPathStations.size() - 1; ++j) {
+                            const auto& interStation = segmentPathStations[j];
+                            intermediateStopsJson.push_back({
+                                {"code", interStation.code},
+                                {"name", interStation.name},
+                                {"lat", interStation.coordinates.latitude},
+                                {"long", interStation.coordinates.longitude}
+                                });
+                        }
+                    }
+                    // Optional: Add logging if segmentPathStations is empty or has < 2 stations
+                    // else if (segmentPathStations.empty()){ std::cerr << "Warning: getStationsAlongLineSegment returned empty for " << segmentStartCode << "->" << segmentEndCode << " line " << lineTaken.id << std::endl;}
+                    // else {std::cerr << "Warning: getStationsAlongLineSegment returned only start/end for " << segmentStartCode << "->" << segmentEndCode << " line " << lineTaken.id << std::endl;}
+
+                }
+                catch (const std::exception& e) {
+                    std::cerr << "Error during getStationsAlongLineSegment for " << segmentStartCode << "->" << segmentEndCode << " line " << lineTaken.id << ": " << e.what() << std::endl;
+                    // Leave intermediateStopsJson empty on error
                 }
             }
-            stepJson["intermediate_stops"] = intermediateStopsJson; // Add intermediates to the step object
+            stepJson["intermediate_stops"] = intermediateStopsJson; // Add intermediates (possibly empty)
 
-            // --- Action Point Logic (same as before) ---
+            // --- Action Point Logic (should be mostly correct, review if needed) ---
             bool isStartPoint = (i == 0);
-            bool isEndPoint = (i == visitedStations.size() - 2);
+            // Endpoint check needs to look at the *index relative to the full path*
+            bool isEndPoint = ((i + 1) == (visitedStations.size() - 1)); // Is this the *last segment*?
+
             bool isTransferPoint = false;
-            if (!isEndPoint && visitedStations.size() > i + 2) {
-                const auto& lineAfterNext = visitedStations[i + 2].line;
-                // Use the transfer logic from getTransferCount or adapt it
+            // Check if a transfer happens *at the end* of this current segment (i.e., at segmentEndCode / endActionPointVs)
+            if (!isEndPoint) { // Only check if not the absolute last station
+                const auto& nextLine = visitedStations[i + 2].line; // The line taken *after* reaching endActionPointVs
                 bool currentIsPublic = lineTaken.id != "Walk" && lineTaken.id != "Start";
-                bool nextIsPublic = lineAfterNext.id != "Walk" && lineAfterNext.id != "Start";
-                if (currentIsPublic && nextIsPublic && lineTaken.id != lineAfterNext.id) {
-                    isTransferPoint = true; // Bus/Train -> Different Bus/Train
+                bool nextIsPublic = nextLine.id != "Walk" && nextLine.id != "Start";
+
+                if (currentIsPublic && nextIsPublic && lineTaken.id != nextLine.id) {
+                    isTransferPoint = true; // Bus/Train -> Different Bus/Train at endActionPointVs
                 }
-                else if (currentIsPublic && !nextIsPublic && lineAfterNext.id != "Start") {
-                    isTransferPoint = true; // Bus/Train -> Walk
+                else if (currentIsPublic && !nextIsPublic) {
+                    isTransferPoint = true; // Bus/Train -> Walk at endActionPointVs
                 }
-                else if (!currentIsPublic && currentVs.line.id != "Start" && nextIsPublic) {
-                    isTransferPoint = true; // Walk -> Bus/Train
+                else if (!currentIsPublic && lineTaken.id != "Start" && nextIsPublic) {
+                    isTransferPoint = true; // Walk -> Bus/Train at endActionPointVs
                 }
-                // This simplified logic might slightly differ from getTransferCount, ensure consistency if needed
             }
 
-            stepJson["from_is_action_point"] = isStartPoint || isTransferPoint; // Start or arrival point of a transfer-inducing segment
-            stepJson["to_is_action_point"] = isEndPoint || isTransferPoint;   // End or departure point of a transfer-inducing segment
+            // An action point is where you start, end, or transfer.
+            stepJson["from_is_action_point"] = isStartPoint || (i > 0 && stepJson["action_description"] == "Transfer"); // Is the start of this segment an action point? (Overall start, or where previous transfer landed)
+            stepJson["to_is_action_point"] = isEndPoint || isTransferPoint; // Is the end of this segment an action point? (Overall end, or start of next transfer)
 
             // Determine action description based on context
-            if (isStartPoint) stepJson["action_description"] = "Depart";
-            else if (isTransferPoint && i > 0) stepJson["action_description"] = "Transfer"; // Transfer occurs *at* the start of this segment (end of previous)
-            else if (isEndPoint) stepJson["action_description"] = "Arrive";
-            else stepJson["action_description"] = "Continue on " + lineTaken.id; // Or "Pass through"
+            // This logic might need refinement based on exactly what you want to display
+            if (i == 0 && lineTaken.id == "Walk") stepJson["action_description"] = "Walk to first station";
+            else if (i == 0) stepJson["action_description"] = "Depart"; // First public transport leg
+            else if (!isPublic && lineTaken.id == "Walk" && isEndPoint) stepJson["action_description"] = "Walk to destination";
+            else if (!isPublic && lineTaken.id == "Walk") stepJson["action_description"] = "Walk between stations"; // Intermediate walk
+            else if (isTransferPoint) stepJson["action_description"] = "Transfer"; // Arrived at station, will transfer for next leg
+            else if (isEndPoint) stepJson["action_description"] = "Arrive"; // Final public transport leg arrives
+            else stepJson["action_description"] = "Continue on " + lineTaken.id; // Staying on the same line (no transfer at end point)
+
 
             detailedStepsJson.push_back(stepJson);
         }
@@ -482,7 +601,7 @@ json RequestHandler::formatRouteResponse(const BestRouteResult& bestResult) {
 
 std::optional<RequestHandler::StationPair> RequestHandler::selectClosestStation(
     double centerLat, double centerLon,
-    const StationList& allNearby)
+    const StationList& allNearby) const
 {
     if (allNearby.empty()) {
         return std::nullopt;
@@ -517,6 +636,7 @@ void RequestHandler::selectRepresentativeStations(
     double centerLat, double centerLon,
     const StationList& allNearby, // Input: all nearby stations found
     StationList& selected)        // Output: the selected stations (up to 3)
+    const
 {
     selected.clear();
     if (allNearby.empty()) {
@@ -558,7 +678,7 @@ void RequestHandler::selectRepresentativeStations(
 
     // 2. Select Furthest from User (S_N) - if different from S_1
     const StationPair& furthestStationPair = stationsWithDistance.back().second;
-    if (selectedIds.find(furthestStationPair.first) == selectedIds.end()) {
+    if (!selectedIds.contains(furthestStationPair.first)) {
         selected.push_back(furthestStationPair);
         selectedIds.insert(furthestStationPair.first);
         std::cout << "  Selected SN (Furthest): ID " << furthestStationPair.first << " (Dist: " << stationsWithDistance.back().first << ")" << std::endl;
@@ -572,7 +692,7 @@ void RequestHandler::selectRepresentativeStations(
     if (selected.size() < 2 && stationsWithDistance.size() >= 2) {
         // If furthest was same as closest, add the second closest if it exists and is unique
         const StationPair& secondClosest = stationsWithDistance[1].second;
-        if (selectedIds.find(secondClosest.first) == selectedIds.end()) {
+        if (!selectedIds.contains(secondClosest.first)) {
             selected.push_back(secondClosest);
             selectedIds.insert(secondClosest.first);
             std::cout << "  Selected S2 (Second Closest) as fallback for SN: ID " << secondClosest.first << std::endl;
@@ -600,7 +720,7 @@ void RequestHandler::selectRepresentativeStations(
         const StationPair& candidate_Sk_pair = stationsWithDistance[i].second;
 
         // Ensure this candidate hasn't already been selected (e.g., if SN was index 1)
-        if (selectedIds.find(candidate_Sk_pair.first) != selectedIds.end()) {
+        if (selectedIds.contains(candidate_Sk_pair.first)) {
             continue; // Skip already selected stations
         }
 
@@ -623,7 +743,7 @@ void RequestHandler::selectRepresentativeStations(
     if (best_Sk_index != -1) {
         const StationPair& Sk_pair = stationsWithDistance[best_Sk_index].second;
         // Final check for uniqueness (should be redundant due to loop check, but safe)
-        if (selectedIds.find(Sk_pair.first) == selectedIds.end()) {
+        if (!selectedIds.contains(Sk_pair.first)) {
             selected.push_back(Sk_pair);
             selectedIds.insert(Sk_pair.first); // Add to set, though not strictly needed now
             std::cout << "  Selected SK (Most Different from S1): ID " << Sk_pair.first << " (Dist from S1: " << max_dist_from_S1 << ")" << std::endl;
@@ -633,16 +753,14 @@ void RequestHandler::selectRepresentativeStations(
         }
 
     }
-    else if (selected.size() < 3) {
+    else if (selected.size() < 3 &&
+        stationsWithDistance.size() >= 2) {
         // Fallback if no suitable Sk was found (e.g., only 2 unique stations nearby, or all intermediates were already selected)
         // Try adding the second closest if it wasn't SN and hasn't been added yet.
-        if (stationsWithDistance.size() >= 2) {
-            const StationPair& secondClosest = stationsWithDistance[1].second;
-            if (selectedIds.find(secondClosest.first) == selectedIds.end()) {
-                selected.push_back(secondClosest);
-                // selectedIds.insert(secondClosest.first); // Not needed as we exit
-                std::cout << "  Selected S2 (Second Closest) as fallback for SK: ID " << secondClosest.first << std::endl;
-            }
+        const StationPair& secondClosest = stationsWithDistance[1].second;
+        if (!selectedIds.contains(secondClosest.first)) {
+            selected.push_back(secondClosest);
+            std::cout << "  Selected S2 (Second Closest) as fallback for SK: ID " << secondClosest.first << std::endl;
         }
     }
 
@@ -677,19 +795,9 @@ std::vector<Graph::Station> RequestHandler::reconstructIntermediateStops(
 
             // Find the specific line ID going towards *any* next station
             for (const auto& line : linesFromCurrent) {
-                if (line.id == lineId) {
-                    // Basic check: Just take the first match for this line ID.
-                    // More sophisticated: Check arrival times? Requires knowing departure time... complex.
-                    // Simplest approach: Assume there's only one 'lineId' edge relevant here.
-                    if (visitedInSegment.find(line.to) == visitedInSegment.end()) {
-                        nextLine = &line;
-                        break; // Take the first valid, unvisited 'to' for this line ID
-                    }
-                    // If the only way is back to a visited node (or the target), consider it
-                    else if (line.to == segmentEndCode) {
-                        nextLine = &line; // Allow going to the target even if visited (shouldn't happen often)
-                        break;
-                    }
+                if (line.id == lineId && (!visitedInSegment.contains(line.to) || line.to == segmentEndCode)) { 
+                    nextLine = &line;
+                    break;
                 }
             }
 

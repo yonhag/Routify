@@ -50,28 +50,28 @@ private:
         int endStationId = -1;
     };
 
-    // --- Private Helper Methods ---
-    json handleGetLines(const json& request_json);
-    json handleGetStationInfo(const json& request_json);
+    // --- Private Debug Helper Methods ---
+    json handleGetLines(const json& request_json) const;
+    json handleGetStationInfo(const json& request_json) const;
 
     // --- Genetic Algorithm Request Helpers ---
     json handleFindRouteCoordinates(const json& request_json); // Top level
-    json extractAndValidateCoordinateInput(const json& request_json, RequestData& inputData);
-    json findNearbyStationsForRoute(const RequestData& inputData, NearbyStations& foundStations); // Finds ALL nearby
+    json extractAndValidateCoordinateInput(const json& request_json, RequestData& inputData) const;
+    json findNearbyStationsForRoute(const RequestData& inputData, NearbyStations& foundStations) const; // Finds ALL nearby
 
 
     // Helper for finding best route
     std::optional<BestRouteResult> findBestRouteToDestination( // Renamed
         const StationList& selectedStartStations,
         const StationPair& endStationPair, // Takes single end station
-        const RequestData& gaParams);
+        const RequestData& gaParams) const;
 
     // Additional Helpers
-    std::optional<StationPair> selectClosestStation(double centerLat, double centerLon, const StationList& allNearby); 
-    void selectRepresentativeStations(double centerLat, double centerLon, const StationList& allNearby, StationList& selected);
+    std::optional<StationPair> selectClosestStation(double centerLat, double centerLon, const StationList& allNearby) const; 
+    void selectRepresentativeStations(double centerLat, double centerLon, const StationList& allNearby, StationList& selected) const;
     static RequestHandler::GaTaskResult runSingleGaTask(int startId, int endId, const RequestHandler::RequestData& gaParams, const Graph& graph);
 
-    json formatRouteResponse(const BestRouteResult& bestResult);
+    json formatRouteResponse(const BestRouteResult& bestResult) const;
 
     static std::vector<Graph::Station> reconstructIntermediateStops(
         int segmentStartCode,

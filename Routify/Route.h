@@ -38,9 +38,13 @@ public:
 
     // Returns the transportation.
     int getTransferCount() const;
+
+    // Temporary time solution 
+    double getEstimatedBaseTime() const;
     
     // Returns the visited stations vector.
-    const std::vector<VisitedStation> getVisitedStations() const;
+    const std::vector<VisitedStation>& getVisitedStations() const;
+    std::vector<VisitedStation>& getMutableVisitedStations() { return _stations; }
 
     /*
     * Checks if the route is valid -
@@ -70,10 +74,14 @@ public:
     // Helper for mutation (consider making private or moving logic)
     static bool generatePathSegment(int segmentStartId, int segmentEndId, const Graph& graph, std::mt19937& gen, std::vector<VisitedStation>& segment);
 
+    // Calculates walk time between two coordinates based on WALK_SPEED_KPH
+    static double calculateWalkTime(const Utilities::Coordinates& c1, const Utilities::Coordinates& c2);
+
 private:
-	// Calculates walk time between two coordinates based on WALK_SPEED_KPH
-    double calculateWalkTime(const Utilities::Coordinates& c1, const Utilities::Coordinates& c2) const;
 
 	const static double WALK_SPEED_KPH; // defined in Route.cpp
+    const static double ASSUMED_PUBLIC_TRANSPORT_SPEED_KPH;
+
+    mutable double _estimatedBaseTime = -1.0;
     std::vector<VisitedStation> _stations;
 };

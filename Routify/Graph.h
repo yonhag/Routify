@@ -13,15 +13,14 @@ public:
         std::string id;                 // Bus number. Is a string for cases where letters indicate different routes.
         int to;                         // Destination station id.
         double travelTime;              // Travel time (in minutes).
-        double price;                   // Cost (if available; otherwise 0).
         TransportMethod type;           // Type of the connection.
         std::vector<int> arrivalTimes;  // Times of the day the bus arrives, in minutes since midnight. 0 is midnight, 90 is 1:30, etc.
 
 
-        TransportationLine(const std::string& id, int to, double travelTime, double price, TransportMethod type)
-            : id(id), to(to), travelTime(travelTime), price(price), type(type) {
+        TransportationLine(const std::string& id, int to, double travelTime, TransportMethod type)
+            : id(id), to(to), travelTime(travelTime), type(type) {
         }
-        TransportationLine() : id(""), to(0), travelTime(0), price(0), type(TransportMethod::Bus) {}
+        TransportationLine() : id(""), to(0), travelTime(0), type(TransportMethod::Bus) {}
 
         bool operator==(const TransportationLine& other) const {
             return this->id == other.id;
@@ -30,18 +29,19 @@ public:
 
     // Represents a node (station) in the graph.
     struct Station {
+		int code;                               // Station code. Also the map key.
         std::string name;                       // Station name.
         Utilities::Coordinates coordinates;     // Station location.
         std::vector<TransportationLine> lines;  // Lines going through the station.
 
-        Station(const std::string& name, const Utilities::Coordinates& coords)
-            : name(name), coordinates(coords) {
+        Station(const int code, const std::string& name, const Utilities::Coordinates& coords)
+            : code(code), name(name), coordinates(coords) {
         }
 
-        Station() : name(""), coordinates() {}
+        Station() : code(-1), name(""), coordinates() {}
 
         bool operator==(const Station& other) const {
-            return this->name == other.name && this->coordinates == other.coordinates;
+            return this->code == other.code;
         }
     };
 
@@ -62,9 +62,6 @@ public:
 
     // Returns a station from the graph.
     const Station& getStationById(const int id) const;
-
-    // Finds a station id based on station data.
-    int getStationIdByName(const std::string& name) const;
 
     // Checks if a certain station exists.
     bool hasStation(const int id) const;
@@ -93,6 +90,10 @@ private:
 
     // Grants a muteable reference to a station object from the map.
     Station& getStationRefById(const int id);
+
+    const std::string GTFSPath = "../GTFS/";
+	const std::string GTFSStopsFile = GTFSPath + "stops.txt";
+	const std::string GTFSLinesFile = GTFSPath + "stop_times_filtered.txt";
 
 	const double maxNearbyDistance = 0.6; // km
 

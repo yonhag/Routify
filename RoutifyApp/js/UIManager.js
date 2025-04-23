@@ -48,7 +48,7 @@ class UIManager {
             startLong: this.currentUserLocation.lng,
             endLat: endCoords.lat,
             endLong: endCoords.lng,
-            gen: 150, mut: 0.3, popSize: 100
+            gen: 150, mut: 0.5, popSize: 100
         };
 
         // Clear previous graphics
