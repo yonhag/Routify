@@ -30,8 +30,9 @@ public:
     // Adds a visited station to the object.
     void addVisitedStation(const VisitedStation& vs);
 
-    // Calculates the total time the trip should take.
-    double getTotalTime() const;
+    // Calculates the total time the trip should take. 
+    double getTotalTime(const Graph& graph, const int routeStartId) const;
+
 
     // Estimates the total price the trip should cost.
     double getTotalCost(const Graph& graph) const;
