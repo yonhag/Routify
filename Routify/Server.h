@@ -6,7 +6,7 @@
 class Server {
 public:
     // Constructor takes the port number.
-    Server(const int port);
+    explicit Server(const int port);
 
     // Destructor cleans up resources.
     virtual ~Server();
@@ -15,16 +15,14 @@ public:
     void start();
 
 private:
-    // Server socket wrapped in the Socket class.
+    bool initSocket() const;
+    bool bindSocket() const;
+    bool listenSocket() const;
+    void acceptConnections();
+
     Socket serverSocket;
     int port;
     bool running;
     std::vector<std::thread> threads;
     RequestHandler handler;
-
-    // Internal functions to structure the server setup.
-    bool initSocket();
-    bool bindSocket();
-    bool listenSocket();
-    void acceptConnections();
 };

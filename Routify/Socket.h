@@ -7,7 +7,7 @@ class Socket {
 public:
     Socket();
 
-    Socket(SOCKET socketDescriptor);
+    explicit Socket(SOCKET socketDescriptor);
 
     ~Socket();
 

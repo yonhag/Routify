@@ -63,7 +63,7 @@ const std::vector<Graph::TransportationLine>& Graph::getLinesFrom(const int node
     return empty;
 }
 
-const Graph::Station& Graph::getStationById(const int id) const
+const Graph::Station& Graph::getStationByCode(const int id) const
 {
     auto it = _map.find(id);
     if (it == _map.end()) {
@@ -122,7 +122,7 @@ std::vector<Graph::Station> Graph::getStationsAlongLineSegment(
 
     // 1. Get Start Station & Add to Path
     try {
-        const Station& startStation = getStationById(segmentStartStationId);
+        const Station& startStation = getStationByCode(segmentStartStationId);
         pathStations.push_back(startStation);
 
         // If start is already the end, we're done
@@ -170,10 +170,8 @@ std::vector<Graph::Station> Graph::getStationsAlongLineSegment(
                         break;
                     }
                     // Check if it's a valid fallback (doesn't go back to immediate previous)
-                    if (line.to != previousStationId) {
-                        if (fallbackLine == nullptr) { // Store the first valid fallback found
-                            fallbackLine = &line;
-                        }
+                    if (line.to != previousStationId && fallbackLine == nullptr) {
+                        fallbackLine = &line;
                         // Continue checking in case the direct target edge is later
                     }
                 }
@@ -200,7 +198,7 @@ std::vector<Graph::Station> Graph::getStationsAlongLineSegment(
             int nextStationId = chosenLine->to;
             try {
                 // Get the station object for the next stop
-                const Station& nextStation = getStationById(nextStationId);
+                const Station& nextStation = getStationByCode(nextStationId);
                 // Add it to our path result
                 pathStations.push_back(nextStation);
 

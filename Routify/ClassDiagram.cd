@@ -1,63 +1,7 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <ClassDiagram MajorVersion="1" MinorVersion="1">
-  <Class Name="Graph">
-    <Position X="10" Y="0.5" Width="2.25" />
-    <Compartments>
-      <Compartment Name="Nested Types" Collapsed="false" />
-    </Compartments>
-    <NestedTypes>
-      <Enum Name="Graph::TransportMethod" Collapsed="true">
-        <TypeIdentifier>
-          <NewMemberFileName>Graph.h</NewMemberFileName>
-        </TypeIdentifier>
-      </Enum>
-      <Struct Name="Graph::TransportationLine" Collapsed="true">
-        <TypeIdentifier>
-          <NewMemberFileName>Graph.h</NewMemberFileName>
-        </TypeIdentifier>
-      </Struct>
-      <Struct Name="Graph::Station" Collapsed="true">
-        <TypeIdentifier>
-          <NewMemberFileName>Graph.h</NewMemberFileName>
-        </TypeIdentifier>
-      </Struct>
-      <Struct Name="Graph::RouteInfo" Collapsed="true">
-        <TypeIdentifier>
-          <NewMemberFileName>Graph.h</NewMemberFileName>
-        </TypeIdentifier>
-      </Struct>
-    </NestedTypes>
-    <TypeIdentifier>
-      <HashCode>BAAAAIAAApAQEAwAAAIAQAAAAAQAAAgAAEAAAAAAAAA=</HashCode>
-      <FileName>Graph.h</FileName>
-    </TypeIdentifier>
-  </Class>
-  <Class Name="Population">
-    <Position X="8" Y="6" Width="1.5" />
-    <TypeIdentifier>
-      <HashCode>AEAAAQQAAAAAKCAIAABCAAAAAAAAAEAAAAAAQCAAAAA=</HashCode>
-      <FileName>Population.h</FileName>
-    </TypeIdentifier>
-  </Class>
-  <Class Name="Route">
-    <Position X="7.75" Y="0.5" Width="2" />
-    <Compartments>
-      <Compartment Name="Nested Types" Collapsed="false" />
-    </Compartments>
-    <NestedTypes>
-      <Struct Name="Route::VisitedStation" Collapsed="true">
-        <TypeIdentifier>
-          <NewMemberFileName>Route.h</NewMemberFileName>
-        </TypeIdentifier>
-      </Struct>
-    </NestedTypes>
-    <TypeIdentifier>
-      <HashCode>EAAAAAQAQAAACAAAAEAABAAIADIIAAAIAAAhAQABAAA=</HashCode>
-      <FileName>Route.h</FileName>
-    </TypeIdentifier>
-  </Class>
   <Class Name="RequestHandler">
-    <Position X="13.75" Y="4.25" Width="2.75" />
+    <Position X="16.5" Y="1" Width="2.75" />
     <Compartments>
       <Compartment Name="Nested Types" Collapsed="false" />
     </Compartments>
@@ -89,22 +33,78 @@
       </Struct>
     </NestedTypes>
     <TypeIdentifier>
-      <HashCode>IIAAAAABAEBAACAgAAAAABACAAQEAAABAAAIAAAAAIA=</HashCode>
+      <HashCode>IIAAAAABAEBAACAgAAAAABACAIQGAAABABAIAAAAAIA=</HashCode>
       <FileName>RequestHandler.h</FileName>
     </TypeIdentifier>
   </Class>
   <Class Name="Server">
-    <Position X="13.5" Y="0.5" Width="1.5" />
+    <Position X="14.5" Y="4.25" Width="1.75" />
     <TypeIdentifier>
       <HashCode>ABAAACgAAAAAAAAgAAEAAAAAACgAAAwAAAAAAgAAEAA=</HashCode>
       <FileName>Server.h</FileName>
     </TypeIdentifier>
   </Class>
   <Class Name="Socket">
-    <Position X="15.25" Y="0.5" Width="1.5" />
+    <Position X="14.5" Y="1" Width="1.75" />
     <TypeIdentifier>
       <HashCode>AAAAAAAAAAABCAAgAAAAIAAgAAJAAQAAABAAAAAAAAA=</HashCode>
       <FileName>Socket.h</FileName>
+    </TypeIdentifier>
+  </Class>
+  <Class Name="Population">
+    <Position X="8.25" Y="6.75" Width="1.5" />
+    <TypeIdentifier>
+      <HashCode>AEAAAQQAAAAAKCAIAABCAAAAAAAAAEAAAAAAQCAAAAA=</HashCode>
+      <FileName>Population.h</FileName>
+    </TypeIdentifier>
+  </Class>
+  <Class Name="Graph">
+    <Position X="10" Y="1" Width="2.25" />
+    <Compartments>
+      <Compartment Name="Nested Types" Collapsed="false" />
+    </Compartments>
+    <NestedTypes>
+      <Enum Name="Graph::TransportMethod" Collapsed="true">
+        <TypeIdentifier>
+          <NewMemberFileName>Graph.h</NewMemberFileName>
+        </TypeIdentifier>
+      </Enum>
+      <Struct Name="Graph::TransportationLine" Collapsed="true">
+        <TypeIdentifier>
+          <NewMemberFileName>Graph.h</NewMemberFileName>
+        </TypeIdentifier>
+      </Struct>
+      <Struct Name="Graph::Station" Collapsed="true">
+        <TypeIdentifier>
+          <NewMemberFileName>Graph.h</NewMemberFileName>
+        </TypeIdentifier>
+      </Struct>
+      <Struct Name="Graph::RouteInfo" Collapsed="true">
+        <TypeIdentifier>
+          <NewMemberFileName>Graph.h</NewMemberFileName>
+        </TypeIdentifier>
+      </Struct>
+    </NestedTypes>
+    <TypeIdentifier>
+      <HashCode>BAAAAIAAApAQEAwAAAIEQBAAAAQAAAgAAEAAAAAAAgA=</HashCode>
+      <FileName>Graph.h</FileName>
+    </TypeIdentifier>
+  </Class>
+  <Class Name="Route">
+    <Position X="7.5" Y="1" Width="2.25" />
+    <Compartments>
+      <Compartment Name="Nested Types" Collapsed="false" />
+    </Compartments>
+    <NestedTypes>
+      <Struct Name="Route::VisitedStation" Collapsed="true">
+        <TypeIdentifier>
+          <NewMemberFileName>Route.h</NewMemberFileName>
+        </TypeIdentifier>
+      </Struct>
+    </NestedTypes>
+    <TypeIdentifier>
+      <HashCode>EAAAAAQAAAAACAAAAEAABAAIADIIAAAICAAhAQABACA=</HashCode>
+      <FileName>Route.h</FileName>
     </TypeIdentifier>
   </Class>
   <Font Name="Segoe UI" Size="9" />

@@ -93,7 +93,7 @@ json RequestHandler::handleGetLines(const json& request_json) const {
         lineObj["to_code"] = line.to;
         try {
             // Attempt to add destination station name
-            lineObj["to_name"] = _graph.getStationById(line.to).name;
+            lineObj["to_name"] = _graph.getStationByCode(line.to).name;
         }
         catch (...) {
             lineObj["to_name"] = "[Station Code Not Found]"; // Handle case where 'to' code might be invalid
@@ -111,7 +111,7 @@ json RequestHandler::handleGetStationInfo(const json& request_json) const {
         return { {"error", "Invalid or missing stationId"} };
     }
 
-    const Graph::Station& st = _graph.getStationById(stationId);
+    const Graph::Station& st = _graph.getStationByCode(stationId);
     json stationJson = st;
     
     stationJson["code"] = stationId;
@@ -235,7 +235,7 @@ json RequestHandler::handleFindRouteCoordinates(const json& request_json) {
     // Rule 3: Check final walk distance of the station route
     double finalWalkDist = 0.0;
     try {
-        finalWalkDist = Utilities::calculateHaversineDistance(_graph.getStationById(bestResult.endStationId).coordinates, inputData.endCoords);
+        finalWalkDist = Utilities::calculateHaversineDistance(_graph.getStationByCode(bestResult.endStationId).coordinates, inputData.endCoords);
     }
     catch (...) {}
     const double MAX_FINAL_WALK_KM = 1.5; // Example limit
@@ -454,8 +454,8 @@ json RequestHandler::formatRouteResponse(const BestRouteResult& bestResult, cons
     json resultJson;
     try {
         // Use the stored start/end station IDs from BestRouteResult
-        const Graph::Station& startStation = _graph.getStationById(bestResult.startStationId);
-        const Graph::Station& endStation = _graph.getStationById(bestResult.endStationId);
+        const Graph::Station& startStation = _graph.getStationByCode(bestResult.startStationId);
+        const Graph::Station& endStation = _graph.getStationByCode(bestResult.endStationId);
         resultJson["from_station"] = { {"code", bestResult.startStationId}, {"name", startStation.name} };
         resultJson["to_station"] = { {"code", bestResult.endStationId}, {"name", endStation.name} };
     }
@@ -509,13 +509,13 @@ json RequestHandler::formatRouteResponse(const BestRouteResult& bestResult, cons
 
             // --- Get Station Info for Segment Start/End ---
             try {
-                const Graph::Station& fromStation = _graph.getStationById(segmentStartCode);
+                const Graph::Station& fromStation = _graph.getStationByCode(segmentStartCode);
                 stepJson["from_name"] = fromStation.name;
                 stepJson["from_code"] = segmentStartCode;
                 stepJson["from_lat"] = fromStation.coordinates.latitude;
                 stepJson["from_long"] = fromStation.coordinates.longitude;
 
-                const Graph::Station& toStation = _graph.getStationById(segmentEndCode);
+                const Graph::Station& toStation = _graph.getStationByCode(segmentEndCode);
                 stepJson["to_name"] = toStation.name;
                 stepJson["to_code"] = segmentEndCode;
                 stepJson["to_lat"] = toStation.coordinates.latitude;
@@ -650,7 +650,7 @@ std::optional<RequestHandler::StationPair> RequestHandler::selectClosestStation(
 bool RequestHandler::getStationInfo(const Graph& graph, const int stationId, json& stationJson) {
     // (Implementation as before)
     try {
-        const Graph::Station& station = graph.getStationById(stationId);
+        const Graph::Station& station = graph.getStationByCode(stationId);
         stationJson["name"] = station.name; stationJson["code"] = stationId;
         stationJson["lat"] = station.coordinates.latitude; stationJson["long"] = station.coordinates.longitude;
         return true;
@@ -833,7 +833,7 @@ std::vector<Graph::Station> RequestHandler::reconstructIntermediateStops(
                 // Add the station *arrived at* (unless it's the final segment end)
                 if (currentCode != segmentEndCode) {
                     // Ensure station exists before adding
-                    intermediatePath.push_back(graph.getStationById(currentCode));
+                    intermediatePath.push_back(graph.getStationByCode(currentCode));
                 }
                 foundNext = true;
             }

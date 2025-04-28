@@ -63,7 +63,7 @@ double Route::getTotalTime(const Graph& graph, int routeStartId) const {
     const Graph::Station* prevStationPtr = nullptr;
 
     try {
-        prevStationPtr = &graph.getStationById(routeStartId);
+        prevStationPtr = &graph.getStationByCode(routeStartId);
     }
     catch (const std::exception& e) {
         std::cout << e.what() << std::endl;
@@ -145,8 +145,8 @@ double Route::getTotalCost(const Graph& graph) const {
             if (segmentStartId != segmentEndId && segmentStartId != -1 && segmentEndId != -1) {
                 try {
                     // Get the Station objects for start and end of the segment
-                    const Graph::Station& startSegStation = graph.getStationById(segmentStartId);
-                    const Graph::Station& endSegStation = graph.getStationById(segmentEndId);
+                    const Graph::Station& startSegStation = graph.getStationByCode(segmentStartId);
+                    const Graph::Station& endSegStation = graph.getStationByCode(segmentEndId);
 
                     // Calculate direct aerial distance between the start and end stations of this segment
                     totalPublicTransportAerialDistance += Utilities::calculateHaversineDistance(
@@ -211,7 +211,7 @@ bool Route::isValid(int startId, int destinationId, const Graph& graph) const {
     // Check Start Station (still needs name lookup for the very first station)
     try {
         // Ensure first VisitedStation's internal station matches the graph's station for startId
-        if (_stations.front().station != graph.getStationById(startId)) {
+        if (_stations.front().station != graph.getStationByCode(startId)) {
             // Optional Debug: std::cerr << "isValid Fail: Start station object mismatch." << std::endl;
             return false;
         }
@@ -234,7 +234,7 @@ bool Route::isValid(int startId, int destinationId, const Graph& graph) const {
     }
     // Also check that the last station object matches the graph's station for destinationId
     try {
-        if (_stations.back().station != graph.getStationById(destinationId)) {
+        if (_stations.back().station != graph.getStationByCode(destinationId)) {
             // Optional Debug: std::cerr << "isValid Fail: End station object mismatch." << std::endl;
             return false;
         }
@@ -255,7 +255,7 @@ bool Route::isValid(int startId, int destinationId, const Graph& graph) const {
         }
 
         try {
-            if (graph.getStationById(current_station_code) != vs.station) {
+            if (graph.getStationByCode(current_station_code) != vs.station) {
                 return false;
             }
         }
@@ -308,7 +308,7 @@ double Route::getFitness(int startId, int destinationId, const Graph& graph,
     try {
         const Graph::Station& lastSt = _stations.back().station;
         if (lastSt.code == destinationId) finalWalkTime = calculateWalkTime(lastSt.coordinates, destCoords);
-        else finalWalkTime = calculateWalkTime(graph.getStationById(destinationId).coordinates, destCoords);
+        else finalWalkTime = calculateWalkTime(graph.getStationByCode(destinationId).coordinates, destCoords);
     }
     catch (...) {  }
 
@@ -321,7 +321,7 @@ double Route::getFitness(int startId, int destinationId, const Graph& graph,
         if (_stations[i].line.id == "Walk") {
             try {
                 int prevCode = _stations[i].prevStationCode;
-                const auto& prevSt = (i == 0 || prevCode == -1) ? graph.getStationById(startId) : graph.getStationById(prevCode);
+                const auto& prevSt = (i == 0 || prevCode == -1) ? graph.getStationByCode(startId) : graph.getStationByCode(prevCode);
                 totalWalkTime += calculateWalkTime(prevSt.coordinates, _stations[i].station.coordinates);
             }
             catch (...) {  }
@@ -360,13 +360,13 @@ bool Route::generatePathSegment(int segmentStartId, int segmentEndId, const Grap
 
     try {
         if (!graph.hasStation(segmentStartId) || !graph.hasStation(segmentEndId)) return false;
-        const Graph::Station& destStation = graph.getStationById(segmentEndId);
+        const Graph::Station& destStation = graph.getStationByCode(segmentEndId);
         double destLat = destStation.coordinates.latitude; double destLon = destStation.coordinates.longitude;
         visitedCodesSegment.insert(currentCode);
 
         while (currentCode != segmentEndId && steps < maxSteps) {
             if (!graph.hasStation(currentCode)) return false;
-            const Graph::Station& currentStation = graph.getStationById(currentCode);
+            const Graph::Station& currentStation = graph.getStationByCode(currentCode);
 			double curLat = currentStation.coordinates.latitude; double curLon = currentStation.coordinates.longitude;
             double distanceToSegmentEnd = Utilities::calculateHaversineDistance(
                 Utilities::Coordinates(curLat, curLon),
@@ -389,7 +389,7 @@ bool Route::generatePathSegment(int segmentStartId, int segmentEndId, const Grap
             for (const auto& line : availableLines) { /* ... find valid lines/weights ... */
                 int nextCode = line.to;
                 if (graph.hasStation(nextCode) && !visitedCodesSegment.contains(nextCode)) {
-                    const Graph::Station& nextStation = graph.getStationById(nextCode);
+                    const Graph::Station& nextStation = graph.getStationByCode(nextCode);
 					double nextLat = nextStation.coordinates.latitude; double nextLon = nextStation.coordinates.longitude;
                     double distToDest = Utilities::calculateHaversineDistance(
                         Utilities::Coordinates(nextLat, nextLon),
@@ -411,7 +411,7 @@ bool Route::generatePathSegment(int segmentStartId, int segmentEndId, const Grap
             }
 
             // Add the chosen step to the segment
-            const Graph::Station& nextStation = graph.getStationById(chosenLinePtr->to);
+            const Graph::Station& nextStation = graph.getStationByCode(chosenLinePtr->to);
             // *** Pass the correct previous code (currentCode) ***
             segment.push_back(VisitedStation(nextStation, *chosenLinePtr, currentCode));
             currentCode = chosenLinePtr->to; // Move to the next station
@@ -595,7 +595,7 @@ double Route::calculateFullJourneyTime(
 
     // Calculate Initial Walk
     try {
-        const Graph::Station& startStation = graph.getStationById(routeStartId);
+        const Graph::Station& startStation = graph.getStationByCode(routeStartId);
         initialWalkTime = calculateWalkTime(userCoords, startStation.coordinates);
     }
     catch (const std::exception& e) {
@@ -608,7 +608,7 @@ double Route::calculateFullJourneyTime(
 
     // Calculate Final Walk
     try {
-        const Graph::Station& endStation = graph.getStationById(routeEndId);
+        const Graph::Station& endStation = graph.getStationByCode(routeEndId);
         finalWalkTime = calculateWalkTime(endStation.coordinates, destCoords);
     }
     catch (const std::exception& e) {

@@ -73,7 +73,7 @@ namespace {
                 const BfsNode& nodeInfo = it->second; // Info for the current traceCode station
 
                 try {
-                    const Graph::Station& station = graph.getStationById(traceCode);
+                    const Graph::Station& station = graph.getStationByCode(traceCode);
 
                     // Find the actual line object used
                     const Graph::TransportationLine& lineUsed =

@@ -25,7 +25,7 @@ Server::~Server() {
     WSACleanup();
 }
 
-bool Server::initSocket() {
+bool Server::initSocket() const {
     if (!serverSocket.isValid()) {
         std::cerr << "Failed to create server socket." << std::endl;
         return false;
@@ -39,7 +39,7 @@ bool Server::initSocket() {
     return true;
 }
 
-bool Server::bindSocket() {
+bool Server::bindSocket() const {
     sockaddr_in serverAddr;
     std::memset(&serverAddr, 0, sizeof(serverAddr));
     serverAddr.sin_family = AF_INET;
@@ -54,7 +54,7 @@ bool Server::bindSocket() {
     return true;
 }
 
-bool Server::listenSocket() {
+bool Server::listenSocket() const {
     if (listen(serverSocket.getSocketDescriptor(), 10) < 0) {
         std::cerr << "Listen failed" << std::endl;
         return false;
@@ -90,7 +90,7 @@ void Server::acceptConnections() {
         Socket clientSocket(clientDescriptor);
 
         // Spawn a new thread to handle the client.
-        threads.emplace_back(std::thread(&RequestHandler::handleRequest, handler, std::move(clientSocket)));
+        threads.emplace_back(std::thread(&RequestHandler::handleRequest, handler, clientSocket));
     }
 }
 

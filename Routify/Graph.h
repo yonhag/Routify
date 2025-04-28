@@ -45,12 +45,6 @@ public:
         }
     };
 
-
-    struct RouteInfo {
-        std::string id;
-        int route_type;
-    };
-
     Graph();
     ~Graph();
 
@@ -58,13 +52,13 @@ public:
     void addStation(const int code, const std::string& name, const Utilities::Coordinates& coords);
 
     // Returns the edges from a given station id.
-    const std::vector<TransportationLine>& getLinesFrom(const int nodeId) const;
+    const std::vector<TransportationLine>& getLinesFrom(const int stationCode) const;
 
     // Returns a station from the graph.
-    const Station& getStationById(const int id) const;
+    const Station& getStationByCode(const int code) const;
 
     // Checks if a certain station exists.
-    bool hasStation(const int id) const;
+    bool hasStation(const int code) const;
 
     // Returns the size of the map.
     size_t getStationCount() const;
