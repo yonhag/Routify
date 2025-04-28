@@ -1,59 +1,53 @@
-/* style.css */
-
-/* Basic body reset */
 body {
     margin: 0;
     padding: 0;
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    display: flex; /* Use flexbox for overall layout */
-    flex-direction: column; /* Stack header and map vertically */
-    height: 100vh; /* Full viewport height */
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
 }
 
-/* Header Styling */
 .header-container {
-    text-align: center; /* Center H1 */
-    padding: 10px 0 5px 0; /* Padding top/bottom */
+    text-align: center;
+    padding: 10px 0 5px 0; 
     border-bottom: 1px solid #ccc;
-    background-color: #fff; /* Optional background */
-    flex-shrink: 0; /* Prevent header from shrinking */
+    background-color: #fff;
+    flex-shrink: 0; 
 }
 
 h1 {
-    margin: 0 0 10px 0; /* Adjust spacing around H1 */
+    margin: 0 0 10px 0; 
     font-size: 2em;
     color: #333;
 }
 
-/* Route Info Bar Styling */
 .route-info-bar {
-    display: none; /* Hidden by default, JS will change to 'flex' */
+    display: none; 
     background-color: #f0f0f0;
     padding: 8px 15px;
-    margin: 0 auto 5px auto; /* Center the bar horizontally, add bottom margin */
+    margin: 0 auto 5px auto;
     border: 1px solid #ddd;
     border-radius: 4px;
-    font-size: 13px; /* Slightly smaller */
+    font-size: 13px;
     justify-content: space-between;
     align-items: center;
-    max-width: 95%; /* Prevent it from touching screen edges */
+    max-width: 95%; 
     min-height: 25px;
     flex-wrap: wrap;
-    gap: 10px; /* Space between items if they wrap */
-    box-sizing: border-box; /* Include padding/border in width */
+    gap: 10px;
+    box-sizing: border-box; 
 }
 
-.route-info-bar.visible { /* Class added by JS to show the bar */
+.route-info-bar.visible {
     display: flex;
 }
 
-
 .route-stats span {
-    margin-right: 12px; /* Space out stats */
-    white-space: nowrap; /* Prevent stats from wrapping individually */
+    margin-right: 12px;
+    white-space: nowrap;
 }
 .route-stats span:last-child {
-    margin-right: 0; /* No margin on the last item */
+    margin-right: 0; 
 }
 
 .route-stats strong {
@@ -61,28 +55,25 @@ h1 {
 }
 
 .route-summary-text {
-    text-align: center; /* Align summary text to the right */
-    flex-grow: 1; /* Allow summary text to take available space */
-    min-width: 150px; /* Ensure some minimum width */
+    text-align: center;
+    flex-grow: 1; 
+    min-width: 150px;
 }
-.route-summary-text strong { /* Style line numbers */
-    color: #007bff; /* Example blue color */
+
+.route-summary-text strong {
+    color: #007bff;
     font-weight: bold;
 }
 
-/* Status Message Styling */
 .status-message {
-    /* Replaces the fixed positioning */
     text-align: center;
     padding: 5px 10px;
-    margin: 5px auto 5px auto; /* Center below info bar */
+    margin: 5px auto 5px auto;
     font-size: 13px;
     color: #555;
     max-width: 95%;
     border-radius: 3px;
-    /* Optional background/border styling based on type */
-    /* Example (add classes in JS for status-info, status-warning, status-error) */
-    background-color: #f8f9fa; /* Default light background */
+    background-color: #f8f9fa; 
     border: 1px solid #eee;
 }
 
@@ -91,22 +82,21 @@ h1 {
     border-color: #c3e6cb;
     color: #155724;
 }
+
 .status-message.status-warning {
     background-color: #fff3cd;
     border-color: #ffeeba;
     color: #856404;
 }
+
 .status-message.status-error {
     background-color: #f8d7da;
     border-color: #f5c6cb;
     color: #721c24;
 }
 
-
-/* Map Container Styling */
 #map {
     width: 100%;
-    /* height: 500px; */ /* Example fixed height */
-    flex-grow: 1; /* Make map take remaining vertical space */
-    border-top: 1px solid #ccc; /* Separator line */
+    flex-grow: 1;
+    border-top: 1px solid #ccc;
 }

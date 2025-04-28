@@ -1,3 +1,8 @@
+
+import MapManager from './MapManager.js';
+import MarkerManager from './MarkerManager.js';
+import UIManager from './UIManager.js';
+
 // --- Global State ---
 let currentUserLocation = null;
 let markerManagerInstance = null;
@@ -7,13 +12,12 @@ let uiManagerInstance = null;
 function initializeApp() {
     console.log("Initializing application...");
 
-    // 1. Define Initial Map State & Selectors (no change)
+    // 1. Define Initial Map State & Selectors
     const initialMapOptions = { center: { lat: 48.8566, lng: 2.3522 }, zoom: 5 };
 
-    // 2. Create Manager Instances (no change)
+    // 2. Create Manager Instances
     const mapManager = new MapManager('map', initialMapOptions);
-    markerManagerInstance = new MarkerManager(mapManager); // Assign to global var
-    // *** Store the instance ***
+    markerManagerInstance = new MarkerManager(mapManager);
     uiManagerInstance = new UIManager(mapManager, markerManagerInstance);
 
     // 3. Initialize Map, Marker Layers, and UI Listeners
@@ -22,7 +26,7 @@ function initializeApp() {
         if (!map) throw new Error("Map initialization failed.");
         
         if (markerManagerInstance) {
-            markerManagerInstance.tryAddLayersToMap(); // Call the helper function
+            markerManagerInstance.tryAddLayersToMap();
         } else {
             console.error("Failed to add marker layers: markerManagerInstance is null");
         }
@@ -48,14 +52,10 @@ function initializeApp() {
             const desiredZoom = 17;
             mapManager.zoomToPlace(currentUserLocation, desiredZoom);
             L.circleMarker(e.latlng, { radius: 6, color: 'blue', fillColor: '#3f51b5', fillOpacity: 0.8 }).addTo(map);
-
-            // No initial request needed here anymore
         });
 
         map.on('locationerror', (e) => {
-             // Update the global variable
              currentUserLocation = null;
-             // *** ADD THIS LINE: Update the UIManager instance ***
              if (uiManagerInstance) {
                  uiManagerInstance.setCurrentUserLocation(null);
              }
@@ -65,17 +65,10 @@ function initializeApp() {
         console.log("Leaflet App initialization sequence complete.");
 
     } catch (error) {
-        // ... (keep existing catch block) ...
          console.error("Leaflet App initialization failed:", error);
          const mapDiv = document.getElementById('map');
          if (mapDiv) mapDiv.innerHTML = `<p style="color:red; padding: 10px;">App failed to load: ${error.message}</p>`;
     }
 }
 
-// --- Start the application ---
 $(document).ready(initializeApp);
-
-// Import statements needed at the top of main.js:
-import MapManager from './MapManager.js';
-import MarkerManager from './MarkerManager.js';
-import UIManager from './UIManager.js';

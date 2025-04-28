@@ -45,10 +45,8 @@ export async function sendApiRequest(endpoint, payload) {
         return data; // Resolve promise with parsed data
 
     } catch (error) {
-        // Catch fetch network errors or errors thrown from response handling
         console.error('[ApiClient] API Request failed:', error);
         updateStatusMessage(`Error: ${error.message}`, 'error');
-        // Re-throw the error so the caller's .catch can handle it if needed
         throw error;
     }
 }

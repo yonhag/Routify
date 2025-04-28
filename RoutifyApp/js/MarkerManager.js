@@ -1,5 +1,3 @@
-// Relies on the global L object from the Leaflet CDN script
-
 /**
  * Manages markers displayed on the map, specifically route markers.
  */
@@ -14,8 +12,6 @@ class MarkerManager {
             console.log("MarkerManager: routeLayer and actionPointMarkers initialized.");
         } catch (e) {
             console.error("MarkerManager Error: Failed to initialize L.layerGroup(). Is Leaflet (L) loaded?", e);
-            // Set them to null or an empty object to prevent later 'addLayer' errors,
-            // though drawing will fail.
             this.routeLayer = null;
             this.actionPointMarkers = null;
         }
@@ -132,9 +128,9 @@ class MarkerManager {
                 const marker = L.marker(fromCoords, { ...actionMarkerOptions, title: markerTitle }).bindPopup(markerPopup);
                 this.actionPointMarkers.addLayer(marker);
             }
-            // TO marker (only if it's an action point for *this* step)
+            // TO marker
             if (step.to_is_action_point) {
-                 const markerTitle = step.to_name; // No special "End Station" logic here, that's handled later
+                 const markerTitle = step.to_name;
                  const markerPopup = `<b>${actionDesc}</b><br>${step.to_name}`;
                  const marker = L.marker(toCoords, { ...actionMarkerOptions, title: markerTitle }).bindPopup(markerPopup);
                  this.actionPointMarkers.addLayer(marker);
@@ -148,13 +144,11 @@ class MarkerManager {
 
         if (steps.length === 1) { // Only one step in the whole route
             finalOriginCoords = [steps[0].from.lat, steps[0].from.long];
-             // If the single step was walk, origin might effectively be user start
              if (isLastStepWalk && (Math.abs(userCoords[0] - finalOriginCoords[0]) < 0.00001 && Math.abs(userCoords[1] - finalOriginCoords[1]) < 0.00001)) {
-                  finalOriginCoords = userCoords; // Use user coords if first step walk matches user location
+                  finalOriginCoords = userCoords; 
              }
 
-        } else { // More than one step
-            // The origin is the end point of the second-to-last step
+        } else {
             finalOriginCoords = [steps[lastStepIndex - 1].to.lat, steps[lastStepIndex - 1].to.long];
         }
 
@@ -164,20 +158,18 @@ class MarkerManager {
         } else {
             // --- Draw the final segment ---
             if (isLastStepWalk) {
-                // Last calculated step was 'Walk'. Draw straight from previous point to ACTUAL destination.
                 console.log("[MarkerManager] Final step is Walk. Drawing connection from previous step end directly to destination.");
                 const finalWalkPolyline = L.polyline([finalOriginCoords, actualDestCoords], walkStyle);
                 this.routeLayer.addLayer(finalWalkPolyline);
                 allRoutePoints.push(actualDestCoords); // Add actual destination for bounds
 
-                // **Crucially, do NOT add a marker for the intermediate station of the original walk step.**
 
             } else {
                 // Last calculated step was NOT 'Walk' (e.g., Bus/Train).
                 // Draw that last transit step first.
                 console.log("[MarkerManager] Final step is transit. Drawing transit segment first.");
                 const lastStep = steps[lastStepIndex];
-                const lastStepFromCoords = [lastStep.from.lat, lastStep.from.long]; // Should match finalOriginCoords
+                const lastStepFromCoords = [lastStep.from.lat, lastStep.from.long]; 
                 const lastStepToCoords = [lastStep.to.lat, lastStep.to.long]; // Endpoint of the transit
 
                 if (this.isValidCoordinate(lastStepFromCoords) && this.isValidCoordinate(lastStepToCoords)) {
@@ -209,12 +201,11 @@ class MarkerManager {
                           this.actionPointMarkers.addLayer(marker);
                       }
 
-                    // **NOW, draw the connecting walk if needed**
                     if (Math.abs(lastStepToCoords[0] - actualDestCoords[0]) > 0.00001 || Math.abs(lastStepToCoords[1] - actualDestCoords[1]) > 0.00001) {
                         console.log("[MarkerManager] Drawing final connecting walk from end of transit to actual destination.");
                         const finalConnectingWalk = L.polyline([lastStepToCoords, actualDestCoords], walkStyle);
                         this.routeLayer.addLayer(finalConnectingWalk);
-                        allRoutePoints.push(actualDestCoords); // Add actual destination for bounds
+                        allRoutePoints.push(actualDestCoords);
                     }
                 } else {
                      console.error("Invalid coordinates for the final transit step.", lastStep);
@@ -234,8 +225,6 @@ class MarkerManager {
 
     } // End addRouteDisplayFromSteps
 
-
-    // isValidCoordinate helper function should be present within the class or file
     isValidCoordinate(coord) {
         return Array.isArray(coord) && coord.length === 2 && typeof coord[0] === 'number' && typeof coord[1] === 'number' && !isNaN(coord[0]) && !isNaN(coord[1]);
     }
@@ -257,7 +246,7 @@ class MarkerManager {
         // 1. Clear any existing destination marker first
         this.clearDestinationMarker(); // Ensure the previously defined clear function is called
 
-        // 2. Define marker options (customize icon later if desired)
+        // 2. Define marker options
         const markerOptions = {
             title: "Destination" // Tooltip text on hover
         };
@@ -284,7 +273,7 @@ class MarkerManager {
             } else {
                  console.warn("Could not remove destination marker from map: Map instance unavailable.");
             }
-            this.destinationMarker = null; // Clear the reference
+            this.destinationMarker = null;
             console.log("Destination marker cleared.");
         }
     }
@@ -292,25 +281,21 @@ class MarkerManager {
     /**
      * Removes all markers and polylines from the route layer group.
      */
-    clearRouteDisplay() { // Renamed for clarity, now updated
+    clearRouteDisplay() {
         let clearedSomething = false;
         if (this.routeLayer) {
             this.routeLayer.clearLayers();
             clearedSomething = true;
-            // console.log("Route display (lines) cleared."); // Keep logging minimal or combine
         } else {
             console.warn("Attempted to clear route display lines, but routeLayer was not initialized.");
         }
 
-        // --- ADD THIS BLOCK ---
         if (this.actionPointMarkers) {
             this.actionPointMarkers.clearLayers();
             clearedSomething = true;
-            // console.log("Route display (action/intermediate markers) cleared.");
         } else {
             console.warn("Attempted to clear route action point markers, but actionPointMarkers was not initialized.");
         }
-        // --- END ADDED BLOCK ---
 
         if (clearedSomething) {
              console.log("Route display (lines and markers) cleared.");
@@ -351,11 +336,10 @@ class MarkerManager {
                         position = { lat: step.lat, lng: step.long };
                         title += ` at ${step.at || 'transfer point'}`;
                 }
-                // Add handling for other potential 'action' types if needed
 
                 if (position) {
                     const marker = L.marker([position.lat, position.lng], {
-                        title: title // Set hover text
+                        title: title
                     });
                     this.routeLayer.addLayer(marker);
                 } else {
@@ -382,7 +366,6 @@ class MarkerManager {
      * Removes all markers from the route layer group.
      */
     clearRouteMarkers() {
-        // Check if the layer group is defined before calling clearLayers
         if (this.routeLayer) {
             this.routeLayer.clearLayers();
             console.log("Route markers cleared.");

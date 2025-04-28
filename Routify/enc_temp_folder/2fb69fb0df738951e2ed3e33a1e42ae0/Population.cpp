@@ -178,20 +178,21 @@ void Population::evolve(const int generations, const double mutationRate) {
     }
     std::cout << "Starting evolution..." << std::endl;
     const size_t targetSize = _routes.size(); // Maintain original size if possible
+    // Calculate elitism count based on the target size
     const size_t elitismCount = std::max(static_cast<size_t>(1), static_cast<size_t>(targetSize * 0.1));
 
     for (int genIndex = 0; genIndex < generations; ++genIndex) {
         // --- Selection ---
-        performSelection();
+        performSelection(); // Sorts and potentially shrinks _routes
 
         if (_routes.empty()) {
             std::cerr << "Population extinct after selection in generation " << genIndex + 1 << std::endl;
-            break;
+            break; // Stop evolution
         }
 
         // --- Reproduction ---
         std::vector<Route> newGeneration;
-        newGeneration.reserve(targetSize); 
+        newGeneration.reserve(targetSize); // Reserve target size
 
         // Elitism: Copy the best survivors directly
         size_t current_pop_size = _routes.size(); // Size *after* selection

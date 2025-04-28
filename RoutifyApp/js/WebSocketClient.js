@@ -1,4 +1,4 @@
-const WEBSOCKET_URL = "ws://localhost:8200"; // WebSocket URL
+const WEBSOCKET_URL = "ws://localhost:8200";
 
 let webSocket = null;
 let isConnected = false;
@@ -32,7 +32,7 @@ function connectWebSocket(onMessage, onOpen, onClose, onError) {
     } catch (error) {
         console.error("Failed to create WebSocket:", error);
         if (onErrorHandler) onErrorHandler(error);
-        return; // Stop if creation fails
+        return;
     }
 
 
@@ -47,23 +47,21 @@ function connectWebSocket(onMessage, onOpen, onClose, onError) {
         try {
             const response = JSON.parse(event.data);
             if (onMessageHandler) {
-                onMessageHandler(response); // Pass parsed data to handler
+                onMessageHandler(response);
             } else {
                 console.warn("WebSocket message received, but no handler is set.");
             }
         } catch (e) {
             console.error("Failed to parse incoming WebSocket message:", e);
             console.error("Received data:", event.data);
-            // Optionally notify error handler about parse failure
-            // if(onErrorHandler) onErrorHandler(new Error("Failed to parse message"));
         }
     };
 
     webSocket.onerror = (event) => {
         console.error("WebSocket error observed:", event);
-        isConnected = false; // Assume connection is lost on error
+        isConnected = false;
         if (onErrorHandler) {
-            onErrorHandler(event); // Pass the event object
+            onErrorHandler(event);
         } else {
             alert("WebSocket connection error. Please ensure the backend server is running and accessible.");
         }
@@ -71,15 +69,12 @@ function connectWebSocket(onMessage, onOpen, onClose, onError) {
 
     webSocket.onclose = (event) => {
         isConnected = false;
-        webSocket = null; // Clear the instance
+        webSocket = null; 
         console.log(`WebSocket connection closed: Code=${event.code}, Reason=${event.reason}`);
         if (onCloseHandler) {
              onCloseHandler(event);
         } else {
-             // alert("WebSocket connection closed."); // Can be annoying
         }
-        // Optional: Implement automatic reconnection logic here?
-        // setTimeout(connectWebSocket, 5000); // Example: Try reconnecting after 5s
     };
 }
 

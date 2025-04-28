@@ -1,6 +1,3 @@
-// Relies on the global L object from the Leaflet CDN script
-// If using a bundler, you'd import L from 'leaflet';
-
 /**
  * Manages the Leaflet map instance and basic controls like zooming.
  */
@@ -17,7 +14,6 @@ class MapManager {
 
         if (!this.initialOptions || !this.initialOptions.center || typeof this.initialOptions.zoom !== 'number') {
             console.error("MapManager: Invalid initialOptions provided.", initialOptions);
-            // Provide safe defaults?
             this.initialOptions = { center: { lat: 0, lng: 0 }, zoom: 2 };
         }
     }
@@ -58,8 +54,6 @@ class MapManager {
         } catch (error) {
              console.error("Error creating Leaflet map instance:", error);
              mapDiv.textContent = `Error creating map: ${error.message}`;
-             // Consider throwing the error here if map creation is critical
-             // throw error;
              return null;
         }
     }
@@ -68,7 +62,6 @@ class MapManager {
      * @returns {L.Map|null} The Leaflet map instance.
      */
     getMapInstance() {
-        // Maybe add a check if !this.map?
         return this.map;
     }
 

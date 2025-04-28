@@ -3,12 +3,9 @@ import { sendApiRequest } from './ApiClient.js';
 
 class UIManager {
     constructor(mapManager, markerManager) {
-        // ... constructor remains the same ...
         this.mapManager = mapManager;
         this.markerManager = markerManager;
         this.currentUserLocation = null;
-        // Make sure updateStatusMessage is accessible if it's not global
-        // this.updateStatusMessage = updateStatusMessage;
     }
 
     setCurrentUserLocation(location) {
@@ -21,26 +18,22 @@ class UIManager {
      * Prepares and sends a route request via the Flask Proxy using ApiClient.
      * @param {object} endCoords - The destination coordinates {lat, lng}.
      */
-    requestRoute(endCoords) { // endCoords is the destination {lat, lng}
+    requestRoute(endCoords) {
         console.log("[UIManager.requestRoute] Checking this.currentUserLocation:", this.currentUserLocation);
         if (!this.currentUserLocation) {
             updateStatusMessage("Your current location is not available. Cannot calculate route.", 'warning');
-            // --- ADDED: Clear info bar if location is missing ---
             UIManager.updateRouteInfoBar(null, null);
             return;
         }
         if (!endCoords || typeof endCoords.lat !== 'number' || typeof endCoords.lng !== 'number') {
             updateStatusMessage("Internal error: Invalid destination coordinates.", 'error');
-            // --- ADDED: Clear info bar on invalid destination ---
             UIManager.updateRouteInfoBar(null, null);
             return;
         }
 
         console.log(`Requesting route from User:${this.currentUserLocation.lat},${this.currentUserLocation.lng} to Dest:${endCoords.lat},${endCoords.lng}`);
-        // --- UPDATE UI Before Request ---
-        updateStatusMessage("Calculating route...", 'info'); // Set status message
-        UIManager.updateRouteInfoBar(null, "Calculating route..."); // Show bar with loading text
-        // --- END UI Update ---
+        updateStatusMessage("Calculating route...", 'info');
+        UIManager.updateRouteInfoBar(null, "Calculating route...");
 
         const payload = {
             type: 2,
@@ -54,8 +47,6 @@ class UIManager {
         // Clear previous graphics
         if(this.markerManager) {
              this.markerManager.clearRouteDisplay(); // Clear lines/markers
-             // Decide if destination marker should persist or be cleared here too
-             // this.markerManager.clearDestinationMarker();
         } else {
              console.error("Cannot clear route display: MarkerManager missing.");
         }
@@ -67,38 +58,36 @@ class UIManager {
             .then(response => {
                 console.log("[UIManager] Received response:", response);
 
-                // --- Robust checking ---
                 if (!response) {
                     updateStatusMessage("Error: No response from server.", 'error');
-                    UIManager.updateRouteInfoBar(null, null); // <<< Hide/clear info bar
+                    UIManager.updateRouteInfoBar(null, null);
                     return;
                 }
                 if (response.error) {
                     updateStatusMessage(`Server error: ${response.error}. ${response.details || ''}`, 'error');
-                    UIManager.updateRouteInfoBar(null, null); // <<< Hide/clear info bar
+                    UIManager.updateRouteInfoBar(null, null);
                     return;
                 }
                 if (!Array.isArray(response.detailed_steps)) {
                     if (response.status && response.status !== "Route found") {
                         updateStatusMessage(`Could not find route: ${response.status}`, 'warning');
-                        UIManager.updateRouteInfoBar(null, `Could not find route: ${response.status}`); // <<< Show status in bar
+                        UIManager.updateRouteInfoBar(null, `Could not find route: ${response.status}`);
                     } else {
                         updateStatusMessage("Error: Invalid route data received.", 'error');
-                        UIManager.updateRouteInfoBar(null, null); // <<< Hide/clear info bar
+                        UIManager.updateRouteInfoBar(null, null);
                     }
-                    // Also clear graphics if route failed but response was valid-ish
                     if(this.markerManager) this.markerManager.clearRouteDisplay();
                     return;
                 }
                 if (response.detailed_steps.length === 0) {
                     updateStatusMessage("No route path found.", 'warning');
                     const stats = response.summary ? { time: response.summary.time_mins, cost: response.summary.cost, transfers: response.summary.transfers } : null;
-                    UIManager.updateRouteInfoBar(stats, "No route path to display."); // <<< Update info bar
+                    UIManager.updateRouteInfoBar(stats, "No route path to display.");
                     return;
                 }
                 // --- End Checks ---
 
-                // --- SUCCESS: Update UI & Draw Route ---
+                // --- Update UI & Draw Route ---
                 console.log("[UIManager] Valid steps received. Updating UI and drawing route.");
                 updateStatusMessage("Route found.", 'success'); // Simple status
 
@@ -107,13 +96,13 @@ class UIManager {
                     time: response.summary.time_mins,
                     cost: response.summary.cost,
                     transfers: response.summary.transfers
-                    // arrivalTime: response.summary.arrivalTime // Add when available
+                    // arrivalTime: response.summary.arrivalTime
                 } : null;
 
                 // 2. Generate summary text
                 const summaryText = UIManager.generateRouteSummaryText(response.detailed_steps, this.currentUserLocation, destinationCoords);
 
-                // 3. Update the top info bar <<<< ----- THE CALLS ARE HERE ----- <<<<
+                // 3. Update the top info bar
                 UIManager.updateRouteInfoBar(stats, summaryText);
 
                 // 4. Draw route on map
@@ -125,19 +114,15 @@ class UIManager {
                     );
                 } else {
                     console.error("Cannot draw route: MarkerManager or currentUserLocation missing.");
-                    // If drawing fails, maybe clear the info bar too?
                     UIManager.updateRouteInfoBar(null, "Error displaying route map.");
                 }
-                // --- END SUCCESS ---
 
             })
             .catch(error => {
                 console.error("[UIManager] Error during route request:", error);
                 updateStatusMessage(`Network or processing error: ${error.message}`, 'error');
-                // --- UPDATE UI On Catch Error ---
-                UIManager.updateRouteInfoBar(null, null); // Hide/clear info bar
-                if(this.markerManager) this.markerManager.clearRouteDisplay(); // Clear graphics too
-                // --- END UI Update ---
+                UIManager.updateRouteInfoBar(null, null);
+                if(this.markerManager) this.markerManager.clearRouteDisplay();
             });
     } // End requestRoute
 
@@ -188,28 +173,22 @@ class UIManager {
         }
 
         if (stats || summaryText) {
-            // Update Stats (Left Side)
             let statsHtml = '';
             if (stats) {
                 statsHtml += `<span><strong>Time:</strong> ${stats.time !== undefined ? stats.time.toFixed(1) + ' min' : 'N/A'}</span>`;
                 statsHtml += `<span><strong>Cost:</strong> ${stats.cost !== undefined ? stats.cost.toFixed(2) : 'N/A'}</span>`;
                 statsHtml += `<span><strong>Transfers:</strong> ${stats.transfers !== undefined ? stats.transfers : 'N/A'}</span>`;
             } else {
-                statsHtml = '<span> </span>'; // Placeholder if no stats but summary exists
+                statsHtml = '<span> </span>';
             }
             statsDiv.innerHTML = statsHtml;
 
-            // Update Summary Text (Right Side)
-            // Use innerHTML now because generateRouteSummaryText includes <strong> tags
             summaryDiv.innerHTML = summaryText || 'Calculating...';
 
-            // Show the Bar by adding the 'visible' class
             infoBar.classList.add('visible');
 
         } else {
-            // Hide the Bar by removing the 'visible' class
             infoBar.classList.remove('visible');
-            // Optionally clear content when hiding
             statsDiv.innerHTML = '';
             summaryDiv.innerHTML = '';
         }
@@ -250,9 +229,7 @@ class UIManager {
             if (isPublicTransit) {
                 // --- On Public Transit ---
                 if (step.line_id !== currentVehicleLine) {
-                    // Boarding a new line (or the first line after walking)
                     if (currentVehicleLine !== null) {
-                        // We were just on a different vehicle, finalize its description
                         summaryParts.push(`ride ${stopsOnCurrentVehicle} stop(s) to ${lastStationName}`);
                     }
                     // Start the description for the new line
@@ -260,25 +237,22 @@ class UIManager {
                     currentVehicleLine = step.line_id;
                     stopsOnCurrentVehicle = 1; // Start counting stops for this line
                 } else {
-                    // Continuing on the same line
                     stopsOnCurrentVehicle++;
                 }
-                lastStationName = nextStationName; // Update the name of the station we just arrived at
+                lastStationName = nextStationName; 
 
             } else if (step.line_id === 'Walk') {
                 // --- Walking Segment ---
                 if (currentVehicleLine !== null) {
                     // We just got off a vehicle, finalize its description
-                    summaryParts.push(`ride ${stopsOnCurrentVehicle} stop(s) to ${lastStationName}`); // lastStationName is where we alighted
-                    currentVehicleLine = null; // Reset vehicle tracking
+                    summaryParts.push(`ride ${stopsOnCurrentVehicle} stop(s) to ${lastStationName}`); 
+                    currentVehicleLine = null;
                     stopsOnCurrentVehicle = 0;
                 }
-                // Add walk instruction
-                // TODO: Could improve this if walk distance/time is available in 'step'
                 summaryParts.push(`walk to ${nextStationName}`);
-                lastStationName = nextStationName; // Update location after walking
+                lastStationName = nextStationName;
 
-            } // Ignore 'Start' lines if they appear
+            }
 
         } // End loop through steps
 
@@ -286,12 +260,10 @@ class UIManager {
         // --- 3. Finalize last vehicle segment if necessary ---
         // If the loop ended while on public transit, add the final ride segment description
         if (currentVehicleLine !== null) {
-             // 'lastStationName' at this point holds the name of the final station reached by transit
             summaryParts.push(`ride ${stopsOnCurrentVehicle} stop(s) to ${lastStationName}`);
         }
 
-        // --- 4. Add Final Walk (Implied by destination marker) ---
-        // Optional: Add explicit "walk to destination" if last step wasn't already walk
+        // --- 4. Add Final Walk ---
         if (steps[steps.length-1].line_id !== 'Walk') {
              summaryParts.push("walk to destination");
         }

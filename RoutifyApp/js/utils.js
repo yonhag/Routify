@@ -6,15 +6,14 @@
 export function parseCoordinateString(coordString) {
     if (!coordString || typeof coordString !== 'string') return null;
 
-    const parts = coordString.trim().split(/\s+/); // Split by one or more spaces
+    const parts = coordString.trim().split(/\s+/);
     if (parts.length !== 2) return null;
 
     const lat = parseFloat(parts[0]);
-    const lng = parseFloat(parts[1]); // Assume input order is lat long
+    const lng = parseFloat(parts[1]);
 
     if (isNaN(lat) || isNaN(lng)) return null;
 
-    // Basic validation (adjust ranges if needed)
     if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
         console.warn("Parsed coordinates out of valid range:", lat, lng);
         return null;
@@ -37,11 +36,11 @@ export function updateStatusMessage(message, type = 'info') {
     }
 
     statusElement.textContent = message;
-    statusElement.className = ''; // Clear previous classes
+    statusElement.className = '';
 
     switch (type) {
         case 'success':
-            statusElement.classList.add('status-success'); // Add CSS class for styling
+            statusElement.classList.add('status-success');
             break;
         case 'warning':
             statusElement.classList.add('status-warning');
@@ -54,7 +53,6 @@ export function updateStatusMessage(message, type = 'info') {
              statusElement.classList.add('status-info');
             break;
     }
-     // Make sure it's visible (might be hidden initially)
     statusElement.style.display = 'block';
 }
 
@@ -66,6 +64,6 @@ export function clearStatusMessage() {
     if (statusElement) {
         statusElement.textContent = '';
         statusElement.className = '';
-        statusElement.style.display = 'none'; // Hide element when empty
+        statusElement.style.display = 'none';
     }
 }
