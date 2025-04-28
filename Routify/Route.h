@@ -13,7 +13,7 @@ public:
             : station(s), line(l), prevStationCode(prevCode) {
         }
 
-        VisitedStation() : station(), line(), prevStationCode(-1) {}
+        VisitedStation() : prevStationCode(-1) {}
     };
 
     // Default constructor.
@@ -33,15 +33,11 @@ public:
     // Calculates the total time the trip should take. 
     double getTotalTime(const Graph& graph, const int routeStartId) const;
 
-
     // Estimates the total price the trip should cost.
     double getTotalCost(const Graph& graph) const;
 
     // Returns the transportation.
     int getTransferCount() const;
-
-    // Temporary time solution 
-    double getEstimatedBaseTime() const;
     
     // Returns the visited stations vector.
     const std::vector<VisitedStation>& getVisitedStations() const;
@@ -76,13 +72,16 @@ public:
     static bool generatePathSegment(int segmentStartId, int segmentEndId, const Graph& graph, std::mt19937& gen, std::vector<VisitedStation>& segment);
 
     // Calculates walk time between two coordinates based on WALK_SPEED_KPH
+    double calculateFullJourneyTime(
+        const Graph& graph,
+        int routeStartId,
+        int routeEndId, // Need the ID of the station where the route ends
+        const Utilities::Coordinates& userCoords,
+        const Utilities::Coordinates& destCoords) const;
+
+	// Calculates the approximate time it would take to walk between two coordinates
     static double calculateWalkTime(const Utilities::Coordinates& c1, const Utilities::Coordinates& c2);
 
 private:
-
-	const static double WALK_SPEED_KPH; // defined in Route.cpp
-    const static double ASSUMED_PUBLIC_TRANSPORT_SPEED_KPH;
-
-    mutable double _estimatedBaseTime = -1.0;
     std::vector<VisitedStation> _stations;
 };

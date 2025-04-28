@@ -9,6 +9,9 @@
 
 namespace Utilities {
 
+    const double WALK_SPEED_KPH = 5.0;
+    const double ASSUMED_PUBLIC_TRANSPORT_SPEED_KPH = 50.0;
+
     // --- Coordinates Struct ---
     struct Coordinates {
         double latitude = 0.0;
@@ -27,14 +30,7 @@ namespace Utilities {
         }
 
         // Optional: Equality operator
-        bool operator==(const Coordinates& other) const {
-            // Consider using an epsilon comparison for floating-point numbers
-            // For simplicity here, we'll use direct comparison.
-            return latitude == other.latitude && longitude == other.longitude;
-        }
-        bool operator!=(const Coordinates& other) const {
-            return !(*this == other);
-        }
+        bool operator==(const Coordinates& other) const = default;
     };
     // --- End Coordinates Struct ---
 

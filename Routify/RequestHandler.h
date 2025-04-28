@@ -59,6 +59,7 @@ private:
     json extractAndValidateCoordinateInput(const json& request_json, RequestData& inputData) const;
     json findNearbyStationsForRoute(const RequestData& inputData, NearbyStations& foundStations) const; // Finds ALL nearby
 
+    static bool getStationInfo(const Graph& graph, const int stationId, json& stationJson);
 
     // Helper for finding best route
     std::optional<BestRouteResult> findBestRouteToDestination( // Renamed
@@ -71,13 +72,22 @@ private:
     void selectRepresentativeStations(double centerLat, double centerLon, const StationList& allNearby, StationList& selected) const;
     static RequestHandler::GaTaskResult runSingleGaTask(int startId, int endId, const RequestHandler::RequestData& gaParams, const Graph& graph);
 
-    json formatRouteResponse(const BestRouteResult& bestResult) const;
+    json formatRouteResponse(const BestRouteResult& bestResult, const RequestData& inputData) const;
 
     static std::vector<Graph::Station> reconstructIntermediateStops(
         int segmentStartCode,
         int segmentEndCode,
         const std::string& lineId,
         const Graph& graph);
+
+    static void addIntermediateStops(
+        json& stepJson, const Graph::TransportationLine& lineTaken,
+        int segmentStartCode, int segmentEndCode, const Graph& graph);
+
+    static void addActionDetails(
+        json& stepJson, size_t i,
+        const std::vector<Route::VisitedStation>& visitedStations,
+		const Graph::TransportationLine& lineTaken);
 
 
     // Member Variables

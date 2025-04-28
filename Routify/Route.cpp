@@ -8,11 +8,6 @@
 #include <limits>
 #include <unordered_set>
 
-const double Route::WALK_SPEED_KPH = 5.0;
-
-const double Route::ASSUMED_PUBLIC_TRANSPORT_SPEED_KPH = 50.0;
-// --- Route Class Implementation ---
-
 namespace {
     bool isPublicTransport(Graph::TransportMethod method) {
         return method == Graph::TransportMethod::Bus ||
@@ -53,10 +48,6 @@ namespace {
     }
 }
 
-double Route::getEstimatedBaseTime() const {
-    return this->_estimatedBaseTime;
-}
-
 // Add a visited station step
 void Route::addVisitedStation(const VisitedStation& vs) {
     this->_stations.push_back(vs);
@@ -75,24 +66,23 @@ double Route::getTotalTime(const Graph& graph, int routeStartId) const {
         prevStationPtr = &graph.getStationById(routeStartId);
     }
     catch (const std::exception& e) {
+        std::cout << e.what() << std::endl;
         return 0.0; 
     }
 
     // Iterate through each step in the recorded path
-    for (size_t i = 0; i < _stations.size(); ++i) {
-        const auto& currentVs = _stations[i];
-
+    for (const auto& i : _stations) {
         // Calculate time for the segment ending at currentVs
         totalEstimatedTime += calculateEstimatedSegmentTime(
             prevStationPtr,
-            currentVs,
-            WALK_SPEED_KPH,
-            ASSUMED_PUBLIC_TRANSPORT_SPEED_KPH
+            i,
+            Utilities::WALK_SPEED_KPH,
+            Utilities::ASSUMED_PUBLIC_TRANSPORT_SPEED_KPH
         );
 
         // Update prevStationPtr for the next iteration
         // Use the address of the station object stored in the VisitedStation
-        prevStationPtr = &currentVs.station;
+        prevStationPtr = &i.station;
     }
 
     return totalEstimatedTime;
@@ -261,15 +251,11 @@ bool Route::isValid(int startId, int destinationId, const Graph& graph) const {
 
         // Basic check: previous code must be valid
         if (prev_station_code == -1 && i > 0) { // -1 only valid for the real start node (i=0 handled above)
-            // Optional Debug: std::cerr << "isValid Fail (Step " << i << "): Invalid prevStationCode (-1)." << std::endl;
             return false;
         }
 
-        // Check 1: Does the 'to' field match the station we *think* we arrived at?
-        // We need to verify the station object stored at index 'i' corresponds to current_station_code
         try {
             if (graph.getStationById(current_station_code) != vs.station) {
-                // Optional Debug: std::cerr << "isValid Fail (Step " << i << "): Station object mismatch for code " << current_station_code << "." << std::endl;
                 return false;
             }
         }
@@ -347,8 +333,10 @@ double Route::getFitness(int startId, int destinationId, const Graph& graph,
     int transfers = getTransferCount();
 
     // --- Define weights/penalties ---
-    const double time_weight = 1.0, cost_weight = 0.1, transfer_penalty = 15.0;
-    const double walk_penalty_factor = 2.0, stop_penalty = 0.0;
+    const double time_weight = 1.0;
+    const double cost_weight = 0.1;
+    const double transfer_penalty = 45.0;
+    const double walk_penalty_factor = 2.0;
 
     // --- Calculate Score ---
     double baseTime = initialWalkTime + totalStationToStationTime + finalWalkTime; // Base is still calculated same way conceptually
@@ -365,7 +353,6 @@ double Route::getFitness(int startId, int destinationId, const Graph& graph,
 bool Route::generatePathSegment(int segmentStartId, int segmentEndId, const Graph& graph, std::mt19937& gen, std::vector<VisitedStation>& segment) {
     segment.clear();
     int currentCode = segmentStartId;
-    int prevCode = -1; // Track previous code for VisitedStation constructor
     const int maxSteps = 75;
     int steps = 0;
     const double epsilon = 1e-6;
@@ -415,10 +402,10 @@ bool Route::generatePathSegment(int segmentStartId, int segmentEndId, const Grap
             std::vector<double> probabilities; double sumInverseWeights = 0.0;
             for (double w : weights) { sumInverseWeights += 1.0 / std::max(w, epsilon); }
             const Graph::TransportationLine* chosenLinePtr = nullptr;
-            if (sumInverseWeights <= epsilon) { /* ... uniform fallback ... */
+            if (sumInverseWeights <= epsilon) {
                 std::uniform_int_distribution<> uniform_dis(0, static_cast<int>(validLines.size() - 1)); chosenLinePtr = validLines[uniform_dis(gen)];
             }
-            else { /* ... weighted choice ... */
+            else { // Weighted Choice
                 for (double w : weights) { probabilities.push_back((1.0 / std::max(w, epsilon)) / sumInverseWeights); }
                 std::discrete_distribution<> dist(probabilities.begin(), probabilities.end()); chosenLinePtr = validLines[dist(gen)];
             }
@@ -427,7 +414,6 @@ bool Route::generatePathSegment(int segmentStartId, int segmentEndId, const Grap
             const Graph::Station& nextStation = graph.getStationById(chosenLinePtr->to);
             // *** Pass the correct previous code (currentCode) ***
             segment.push_back(VisitedStation(nextStation, *chosenLinePtr, currentCode));
-            prevCode = currentCode; // Update previous code for the *next* iteration
             currentCode = chosenLinePtr->to; // Move to the next station
             visitedCodesSegment.insert(currentCode);
             steps++;
@@ -518,8 +504,7 @@ void Route::mutate(double mutationRate, std::mt19937& gen, int startId, int dest
 
         if (walk_dist < MAX_WALK_REPLACE_DISTANCE) {
             // Walking is feasible, create the walk step
-            const double WALK_SPEED_KPH = 5.0;
-            double walk_time = (walk_dist / WALK_SPEED_KPH) * 60.0; // time in minutes
+            double walk_time = (walk_dist / Utilities::WALK_SPEED_KPH) * 60.0; // time in minutes
 
             Graph::TransportationLine walkLine("Walk", segment_end_code, walk_time, Graph::TransportMethod::Walk);
             VisitedStation walkStep(segment_end_vs.station, walkLine, before_segment_code); // Walk ends at station idx2, came from station idx1
@@ -540,13 +525,7 @@ void Route::mutate(double mutationRate, std::mt19937& gen, int startId, int dest
                 _stations.erase(erase_start, erase_end);
                 // Insert the single walk step *after* idx1
                 _stations.insert(_stations.begin() + idx1 + 1, walkStep);
-                // Optional: std::cout << "DEBUG: Replaced segment with walk!" << std::endl;
             }
-            else {
-                // Optional: std::cerr << "DEBUG: Walk replacement erase range invalid." << std::endl;
-            }
-
-
         }
         // else: Walking distance too long, do nothing for this mutation type
 
@@ -604,12 +583,72 @@ Route Route::crossover(const Route& parent1, const Route& parent2, std::mt19937&
     }
 }
 
+double Route::calculateFullJourneyTime(
+    const Graph& graph,
+    int routeStartId,
+    int routeEndId,
+    const Utilities::Coordinates& userCoords,
+    const Utilities::Coordinates& destCoords) const
+{
+    double initialWalkTime = 0.0;
+    double finalWalkTime = 0.0;
 
+    // Calculate Initial Walk
+    try {
+        const Graph::Station& startStation = graph.getStationById(routeStartId);
+        initialWalkTime = calculateWalkTime(userCoords, startStation.coordinates);
+    }
+    catch (const std::exception& e) {
+        std::cerr << "Warning: Failed to get start station " << routeStartId << " for initial walk time. " << e.what() << std::endl;
+        // Decide how to handle error - return error code? Or 0 time?
+    }
 
-double Route::calculateWalkTime(const Utilities::Coordinates& c1, const Utilities::Coordinates& c2) {
-    double dist = Utilities::calculateHaversineDistance(c1, c2);
-    if (dist < 0) return 0;
-    return (dist / Route::WALK_SPEED_KPH) * 60.0; // minutes
+    // Calculate Station-to-Station Time (using existing method)
+    double stationToStationTime = getTotalTime(graph, routeStartId);
+
+    // Calculate Final Walk
+    try {
+        const Graph::Station& endStation = graph.getStationById(routeEndId);
+        finalWalkTime = calculateWalkTime(endStation.coordinates, destCoords);
+    }
+    catch (const std::exception& e) {
+        std::cerr << "Warning: Failed to get end station " << routeEndId << " for final walk time. " << e.what() << std::endl;
+        // Decide how to handle error
+    }
+
+    // Basic checks for NaN or negative values from components
+    if (std::isnan(initialWalkTime) || initialWalkTime < 0) initialWalkTime = 0;
+    if (std::isnan(stationToStationTime) || stationToStationTime < 0) stationToStationTime = 0;
+    if (std::isnan(finalWalkTime) || finalWalkTime < 0) finalWalkTime = 0;
+
+    return initialWalkTime + stationToStationTime + finalWalkTime;
 }
 
+double Route::calculateWalkTime(const Utilities::Coordinates& c1, const Utilities::Coordinates& c2) {
+    if (!c1.isValid() || !c2.isValid()) {
+        std::cerr << "Warning: Invalid coordinates passed to calculateWalkTime." << std::endl;
+        return 0.0; // Cannot calculate time for invalid coords
+    }
+    double dist = Utilities::calculateHaversineDistance(c1, c2);
 
+    // Handle potential issues with distance or speed
+    if (dist < 0 || std::isnan(dist)) {
+        std::cerr << "Warning: Invalid distance (" << dist << ") in calculateWalkTime." << std::endl;
+        return 0.0; // Distance cannot be negative
+    }
+    if (Utilities::WALK_SPEED_KPH <= 0 || std::isnan(Utilities::WALK_SPEED_KPH)) {
+        std::cerr << "Error: Invalid WALK_SPEED_KPH (" << Utilities::WALK_SPEED_KPH << ")." << std::endl;
+        // Return a large value to penalize? Or 0? Let's return 0 for now.
+        return 0.0;
+    }
+    if (dist == 0) {
+        return 0.0; // No time if no distance
+    }
+
+    double time = (dist / Utilities::WALK_SPEED_KPH) * 60.0; // minutes
+    if (std::isnan(time) || time < 0) {
+        std::cerr << "Warning: Calculated walk time is invalid (" << time << ")." << std::endl;
+        return 0.0;
+    }
+    return time;
+}

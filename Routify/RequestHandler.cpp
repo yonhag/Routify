@@ -122,14 +122,14 @@ json RequestHandler::handleGetStationInfo(const json& request_json) const {
 
 // --- Top-Level Coordinate Route Handler ---
 json RequestHandler::handleFindRouteCoordinates(const json& request_json) {
-    std::cout << "Handling Coordinate Route Request (Optimized Pairs)..." << std::endl;
+    std::cout << "Handling Coordinate Route Request..." << std::endl;
 
     // 1. Extract & Validate Input
-    RequestData inputData;
+    RequestData inputData; // Holds userCoords, destCoords, GA params
     json errorJson = extractAndValidateCoordinateInput(request_json, inputData);
     if (!errorJson.is_null()) return errorJson;
 
-    // 2. Find ALL Nearby Stations
+    // 2. Find Nearby Stations
     NearbyStations allFoundStations;
     errorJson = findNearbyStationsForRoute(inputData, allFoundStations);
     if (!errorJson.is_null()) return errorJson;
@@ -138,108 +138,118 @@ json RequestHandler::handleFindRouteCoordinates(const json& request_json) {
     StationList selectedStartStations;
     selectRepresentativeStations(inputData.startCoords.latitude, inputData.startCoords.longitude, allFoundStations.startStations, selectedStartStations);
     if (selectedStartStations.empty()) {
-        return { {"error", "Failed to select any representative start stations"} };
+        return { {"error", "Failed to select representative start stations"} };
     }
 
-    // 4. Select ONLY the CLOSEST END Station
+    // 4. Select CLOSEST END Station
     std::optional<StationPair> closestEndStationOpt = selectClosestStation(inputData.endCoords.latitude, inputData.endCoords.longitude, allFoundStations.endStations);
     if (!closestEndStationOpt.has_value()) {
-        return { {"error", "Failed to select the closest end station"} };
+        return { {"error", "Failed to select closest end station"} };
     }
     const StationPair& closestEndStationPair = closestEndStationOpt.value();
 
-    // 5. Find Best Route Among SELECTED Pairs
+    // 5. Find Best Route (GA)
     std::optional<BestRouteResult> bestResultOpt = findBestRouteToDestination(
         selectedStartStations,
         closestEndStationPair,
-        inputData
+        inputData // Pass GA params and coords needed by Population/Fitness
     );
 
-    // 6. Post-Process and Format Response
-    if (!bestResultOpt.has_value()) {
-        return { {"status", "No valid route found between selected stations"} };
+    // 6. Post-Process Result: Compare Direct Walk vs Station Route
+    double directWalkTime = 0.0;
+    double directWalkDistance = Utilities::calculateHaversineDistance(inputData.startCoords, inputData.endCoords);
+    // Use static const from Route if accessible, otherwise define locally
+    if (Utilities::WALK_SPEED_KPH > 0) {
+        directWalkTime = (directWalkDistance / Utilities::WALK_SPEED_KPH) * 60.0;
     }
-    else {
-        BestRouteResult bestResult = bestResultOpt.value(); // Get the result object
+    const double MAX_REASONABLE_WALK_KM = 2.0;
 
-        // --- *** START OF SIMPLIFIED POST-PROCESSING LOGIC *** ---
-        try {
-            std::vector<Route::VisitedStation>& stations = bestResult.route.getMutableVisitedStations();
-
-            // Check if route ends with two consecutive walks
-            if (stations.size() >= 2 &&
-                stations.back().line.id == "Walk" &&
-                stations[stations.size() - 2].line.id == "Walk")
-            {
-                std::cout << "Post-processing: Found consecutive final walks. Merging into single direct walk..." << std::endl;
-
-                // The station where the second-to-last walk *started* is our real origin point.
-                const Route::VisitedStation& stationBeforeDoubleWalk = stations[stations.size() - 2];
-                int originCode = stationBeforeDoubleWalk.prevStationCode; // Code of the station *before* the two walks
-
-                Utilities::Coordinates originCoords;
-
-                // Determine the coordinates of the origin point
-                if (stations.size() == 2) {
-                    // The entire route was Walk -> Station A -> Walk. Origin is user start.
-                    originCoords = inputData.startCoords;
-                    // The previous station code for the new final step indicates user start
-                    originCode = -2; // Use a special marker for "User Start"
-                } else {
-                    // The origin is a regular station in the graph
-                    // Find the coordinates of the station identified by originCode
-                     try {
-                         originCoords = _graph.getStationById(originCode).coordinates;
-                     } catch (const std::exception& e) {
-                         std::cerr << "Error post-processing: Cannot find origin station " << originCode << ". Skipping merge. Details: " << e.what() << std::endl;
-                         goto end_post_processing; // Skip the rest of the merge logic
-                     }
-                }
-
-                // Target is the final destination coordinates
-                const Utilities::Coordinates& targetCoords = inputData.endCoords;
-
-                // Calculate the direct walk time from the origin point to the target coordinates
-                double directWalkTime = Route::calculateWalkTime(originCoords, targetCoords);
-
-                // We still need the final destination *Station* object for the VisitedStation struct,
-                // even though the walk calculation uses target coordinates.
-                const Graph::Station& finalDestinationStation = _graph.getStationById(bestResult.endStationId);
-
-                // Create the new single, direct walk line
-                Graph::TransportationLine directFinalWalkLine(
-                    "Walk",
-                    bestResult.endStationId, // Line 'to' remains the destination station ID
-                    directWalkTime,
-                    Graph::TransportMethod::Walk
-                );
-
-                // Create the new final VisitedStation step
-                Route::VisitedStation directFinalWalkVs(
-                    finalDestinationStation, // Station object represents the destination
-                    directFinalWalkLine,     // Line taken is the new direct walk
-                    originCode               // Came from origin station (or -2 for user start)
-                );
-
-                // Replace the last two steps with the single direct walk
-                stations.pop_back(); // Remove original final walk
-                stations.pop_back(); // Remove intermediate walk
-                stations.push_back(directFinalWalkVs); // Add the new direct walk
-
-                std::cout << "Post-processing: Merge complete." << std::endl;
-            } // end if two walks
-        } catch (const std::exception& e) {
-            std::cerr << "Error during route post-processing (walk merge): " << e.what() << std::endl;
-            // Continue with the original route if post-processing fails
+    // Case 1: No station route found by GA
+    if (!bestResultOpt.has_value()) {
+        if (directWalkDistance < MAX_REASONABLE_WALK_KM) {
+            return {
+               {"status", "Direct walk recommended"}, {"reason", "No public transport route found"},
+               {"walk_distance_km", directWalkDistance}, {"walk_time_mins", directWalkTime},
+               {"from_coords", {{"lat", inputData.startCoords.latitude}, {"lon", inputData.startCoords.longitude}}},
+               {"to_coords", {{"lat", inputData.endCoords.latitude}, {"lon", inputData.endCoords.longitude}}}
+            };
         }
-        // --- *** END OF POST-PROCESSING LOGIC *** ---
+        else { return { {"status", "No route found (and direct walk too long)"} }; }
+    }
 
-      end_post_processing:; // Label for potential goto skip
+    // Case 2: Station route WAS found
+    BestRouteResult bestResult = bestResultOpt.value(); // Get the result object
 
-        // Format the potentially modified route
-        return formatRouteResponse(bestResult);
-    } // end else (route found)
+    // Calculate total time for the station route using the Route method
+    double totalStationRouteTime = bestResult.route.calculateFullJourneyTime(
+        _graph,
+        bestResult.startStationId,
+        bestResult.endStationId,
+        inputData.startCoords,
+        inputData.endCoords
+    );
+
+    // Decision Logic (Simplified walk check)
+    bool onlyWalkingInStationRoute = true;
+    if (!bestResult.route.getVisitedStations().empty()) {
+        for (const auto& vs : bestResult.route.getVisitedStations()) {
+            // Need Route::isPublicTransport or similar check. Assume simple check for now.
+            if (vs.line.id != "Walk" && vs.line.id != "Start") {
+                onlyWalkingInStationRoute = false;
+                break;
+            }
+        }
+    }
+
+    // Rule 1: Route was only walking between stations
+    if (onlyWalkingInStationRoute) { /* Return Direct Walk JSON if feasible */
+        if (directWalkDistance < MAX_REASONABLE_WALK_KM) {
+            return {
+               {"status", "Direct walk recommended"}, {"reason", "Route involved no public transport"},
+               // ... (Direct walk details) ...
+                {"walk_distance_km", directWalkDistance}, {"walk_time_mins", directWalkTime},
+               {"station_route_alternative_time_mins", totalStationRouteTime},
+               {"from_coords", {{"lat", inputData.startCoords.latitude}, {"lon", inputData.startCoords.longitude}}},
+               {"to_coords", {{"lat", inputData.endCoords.latitude}, {"lon", inputData.endCoords.longitude}}}
+            };
+        }
+        else { /* Handle case where direct walk is too long, but route was only walking */
+            std::cerr << "Warning: Route only involved walking, but direct walk too long. Formatting walk route." << std::endl;
+            // Fall through to format the station-based walk route
+        }
+    }
+
+    // Rule 2: Compare times if public transport was involved
+    const double PREFER_WALK_THRESHOLD_MINS = 5.0;
+    if (!onlyWalkingInStationRoute && directWalkTime < totalStationRouteTime + PREFER_WALK_THRESHOLD_MINS && directWalkDistance < MAX_REASONABLE_WALK_KM) { /* Return Direct Walk JSON */
+        return {
+           {"status", "Direct walk recommended"}, {"reason", "Direct walk is faster or comparable"},
+           // ... (Direct walk details) ...
+            {"walk_distance_km", directWalkDistance}, {"walk_time_mins", directWalkTime},
+           {"station_route_alternative_time_mins", totalStationRouteTime},
+           {"from_coords", {{"lat", inputData.startCoords.latitude}, {"lon", inputData.startCoords.longitude}}},
+           {"to_coords", {{"lat", inputData.endCoords.latitude}, {"lon", inputData.endCoords.longitude}}}
+        };
+    }
+
+    // Rule 3: Check final walk distance of the station route
+    double finalWalkDist = 0.0;
+    try {
+        finalWalkDist = Utilities::calculateHaversineDistance(_graph.getStationById(bestResult.endStationId).coordinates, inputData.endCoords);
+    }
+    catch (...) {}
+    const double MAX_FINAL_WALK_KM = 1.5; // Example limit
+    if (finalWalkDist > MAX_FINAL_WALK_KM) {
+        // Add warning when formatting
+        json response = formatRouteResponse(bestResult, inputData); // Pass inputData
+        response["warning"] = "Route requires a long final walk (" + std::to_string(finalWalkDist) + " km)";
+        return response;
+    }
+
+    // Default: Format the station route
+    return formatRouteResponse(bestResult, inputData); // Pass inputData
 }
+
 
 
 // --- PRIVATE HELPER FUNCTIONS ---
@@ -440,7 +450,7 @@ std::optional<RequestHandler::BestRouteResult> RequestHandler::findBestRouteToDe
 // RequestHandler.cpp
 
 // Helper: Format the successful route response JSON (MODIFIED)
-json RequestHandler::formatRouteResponse(const BestRouteResult& bestResult) const {
+json RequestHandler::formatRouteResponse(const BestRouteResult& bestResult, const RequestData& inputData) const {
     json resultJson;
     try {
         // Use the stored start/end station IDs from BestRouteResult
@@ -458,7 +468,12 @@ json RequestHandler::formatRouteResponse(const BestRouteResult& bestResult) cons
     resultJson["status"] = "Route found";
     resultJson["summary"] = {
         {"fitness", bestResult.fitness},
-        {"time_mins", bestResult.route.getEstimatedBaseTime()},
+        {"time_mins", bestResult.route.calculateFullJourneyTime(
+                                        _graph,
+                                        bestResult.startStationId,
+                                        bestResult.endStationId,
+                                        inputData.startCoords,
+                                        inputData.endCoords) },
         {"cost", bestResult.route.getTotalCost(this->_graph)}, // Uses optimized cost
         {"transfers", bestResult.route.getTransferCount()}
     };
@@ -632,6 +647,20 @@ std::optional<RequestHandler::StationPair> RequestHandler::selectClosestStation(
     }
 }
 
+bool RequestHandler::getStationInfo(const Graph& graph, const int stationId, json& stationJson) {
+    // (Implementation as before)
+    try {
+        const Graph::Station& station = graph.getStationById(stationId);
+        stationJson["name"] = station.name; stationJson["code"] = stationId;
+        stationJson["lat"] = station.coordinates.latitude; stationJson["long"] = station.coordinates.longitude;
+        return true;
+    }
+    catch (const std::exception&) {
+        stationJson["error"] = "Station info lookup failed"; stationJson["code"] = stationId;
+        return false;
+    }
+}
+
 void RequestHandler::selectRepresentativeStations(
     double centerLat, double centerLon,
     const StationList& allNearby, // Input: all nearby stations found
@@ -772,18 +801,17 @@ void RequestHandler::selectRepresentativeStations(
 } // End of selectRepresentativeStations
 
 std::vector<Graph::Station> RequestHandler::reconstructIntermediateStops(
-    int segmentStartCode,
+    int segmentStartCode, // Correct order: start, end, lineId, graph
     int segmentEndCode,
     const std::string& lineId,
     const Graph& graph)
 {
+    // (Implementation as provided before - traces the path)
     std::vector<Graph::Station> intermediatePath;
-    std::unordered_set<int> visitedInSegment; // Prevent infinite loops in case of cycles
-
+    std::unordered_set<int> visitedInSegment;
     int currentCode = segmentStartCode;
     visitedInSegment.insert(currentCode);
-
-    const int MAX_INTERMEDIATE_STEPS = 100; // Safety limit
+    const int MAX_INTERMEDIATE_STEPS = 100;
     int steps = 0;
 
     while (currentCode != segmentEndCode && steps < MAX_INTERMEDIATE_STEPS) {
@@ -792,48 +820,69 @@ std::vector<Graph::Station> RequestHandler::reconstructIntermediateStops(
         try {
             const auto& linesFromCurrent = graph.getLinesFrom(currentCode);
             const Graph::TransportationLine* nextLine = nullptr;
-
-            // Find the specific line ID going towards *any* next station
             for (const auto& line : linesFromCurrent) {
-                if (line.id == lineId && (!visitedInSegment.contains(line.to) || line.to == segmentEndCode)) { 
+                // Match line ID and ensure next stop isn't backtracking (unless it's the end)
+                if (line.id == lineId && (!visitedInSegment.contains(line.to) || line.to == segmentEndCode)) {
                     nextLine = &line;
                     break;
                 }
             }
-
             if (nextLine != nullptr) {
                 currentCode = nextLine->to;
                 visitedInSegment.insert(currentCode);
                 // Add the station *arrived at* (unless it's the final segment end)
                 if (currentCode != segmentEndCode) {
+                    // Ensure station exists before adding
                     intermediatePath.push_back(graph.getStationById(currentCode));
                 }
                 foundNext = true;
             }
             else {
-                // Couldn't find the next step for this line ID from current station
-                std::cerr << "Warning: reconstructIntermediateStops failed to find next stop for line "
-                    << lineId << " from station " << currentCode << std::endl;
-                break; // Stop reconstruction for this segment
+                // Log warning: Failed to find next stop
+                break;
             }
-
         }
         catch (const std::exception& e) {
-            std::cerr << "Warning: Exception during reconstructIntermediateStops: " << e.what() << std::endl;
-            break; // Stop reconstruction on error
+            // Log warning: Exception during reconstruction
+            break;
         }
-        if (!foundNext) break; // Break if no next step was identified
+        if (!foundNext) break;
     }
-
-    if (steps >= MAX_INTERMEDIATE_STEPS) {
-        std::cerr << "Warning: reconstructIntermediateStops hit max steps limit for line " << lineId
-            << " from " << segmentStartCode << " to " << segmentEndCode << std::endl;
-    }
-    if (currentCode != segmentEndCode && steps < MAX_INTERMEDIATE_STEPS) {
-        std::cerr << "Warning: reconstructIntermediateStops did not reach segment end " << segmentEndCode
-            << " for line " << lineId << " from " << segmentStartCode << std::endl;
-    }
-
-
+    // Add warnings for MAX_STEPS or not reaching end if desired
     return intermediatePath;
+}
+
+
+// CORRECTED Definition for addIntermediateStops
+void RequestHandler::addIntermediateStops(
+    json& stepJson, const Graph::TransportationLine& lineTaken,
+    int segmentStartCode, int segmentEndCode, const Graph& graph)
+{
+    bool isPublic = lineTaken.id != "Walk" && lineTaken.id != "Start";
+    stepJson["intermediate_stops"] = json::array();
+
+    if (isPublic && segmentStartCode != segmentEndCode) {
+        try {
+            // *** CORRECTED CALL to reconstructIntermediateStops ***
+            auto pathStations = RequestHandler::reconstructIntermediateStops(
+                segmentStartCode, // Argument 1: Start Station Code
+                segmentEndCode,   // Argument 2: End Station Code
+                lineTaken.id,     // Argument 3: Line ID
+                graph             // Argument 4: Graph object
+            );
+
+            // The rest of the logic remains the same
+            if (pathStations.size() > 0) { // PathStations contains only INTERMEDIATE ones now
+                for (const auto& st : pathStations) {
+                    stepJson["intermediate_stops"].push_back({
+                        {"code", st.code}, {"name", st.name},
+                        {"lat", st.coordinates.latitude}, {"long", st.coordinates.longitude}
+                        });
+                }
+            }
+        }
+        catch (const std::exception& e) {
+            stepJson["intermediate_stops_error"] = e.what();
+        }
+    }
 }
