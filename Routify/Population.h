@@ -13,8 +13,6 @@ public:
 
     void performSelection();
 
-    std::vector<Route> getRoutes() const;
-
 private:
     const Graph& _graph;
     std::vector<Route> _routes;

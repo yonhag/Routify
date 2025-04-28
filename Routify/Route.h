@@ -16,16 +16,13 @@ public:
         VisitedStation() : prevStationCode(-1) {}
     };
 
-    // Default constructor.
     Route() = default;
 
-    // --- Rule of 5: Explicitly default special members ---
     Route(const Route&) = default;
     Route(Route&&) = default;
     Route& operator=(const Route&) = default;
     Route& operator=(Route&&) = default;
     ~Route() = default;
-    // --- End of Rule of 5 ---
 
     // Adds a visited station to the object.
     void addVisitedStation(const VisitedStation& vs);
@@ -43,10 +40,7 @@ public:
     const std::vector<VisitedStation>& getVisitedStations() const;
     std::vector<VisitedStation>& getMutableVisitedStations() { return _stations; }
 
-    /*
-    * Checks if the route is valid -
-    * If all the stations appear on the graph, and are connected by the same lines mentioned here.
-    */
+    // Checks if the route is valid
     bool isValid(int startId, int destinationId, const Graph& graph) const;
 
     /*
@@ -68,20 +62,20 @@ public:
 	*  --- End of Genetic Algorithm Methods ---
     */
 
-    // Helper for mutation (consider making private or moving logic)
-    static bool generatePathSegment(int segmentStartId, int segmentEndId, const Graph& graph, std::mt19937& gen, std::vector<VisitedStation>& segment);
-
     // Calculates walk time between two coordinates based on WALK_SPEED_KPH
     double calculateFullJourneyTime(
         const Graph& graph,
         int routeStartId,
-        int routeEndId, // Need the ID of the station where the route ends
+        int routeEndId,
         const Utilities::Coordinates& userCoords,
         const Utilities::Coordinates& destCoords) const;
 
-	// Calculates the approximate time it would take to walk between two coordinates
+private:
+    // Helper for mutation 
+    static bool generatePathSegment(int segmentStartId, int segmentEndId, const Graph& graph, std::mt19937& gen, std::vector<VisitedStation>& segment);
+
+    // Calculates the approximate time it would take to walk between two coordinates
     static double calculateWalkTime(const Utilities::Coordinates& c1, const Utilities::Coordinates& c2);
 
-private:
     std::vector<VisitedStation> _stations;
 };

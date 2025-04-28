@@ -64,7 +64,7 @@ public:
     size_t getStationCount() const;
 
     // Finds stations within maxNearbyDistance from given coords.
-    std::vector<std::pair<int, Graph::Station>> getNearbyStations(const Utilities::Coordinates& userCoords) const;
+    std::vector<Graph::Station> getNearbyStations(const Utilities::Coordinates& userCoords) const;
 
     /*
     * Finds stations between two stations that a certain line visits.

@@ -226,9 +226,6 @@ void Population::evolve(const int generations, const double mutationRate) {
                 }
             }
         }
-        else {
-            // If selection killed all parents, new generation will only contain elites (if any)
-        }
 
         // Replace old population with the new one
         _routes = std::move(newGeneration);
@@ -303,9 +300,3 @@ void Population::performSelection() {
     }
 }
 
-
-// Getter for current routes
-std::vector<Route> Population::getRoutes() const
-{
-    return this->_routes;
-}

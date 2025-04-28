@@ -30,18 +30,16 @@ def serve_files(filename):
 
     if filename.startswith('js/'):
         directory_to_serve = JS_DIR
-        # Remove 'js/' prefix to get the actual filename within the js directory
         file_to_serve = filename[len('js/'):]
     elif filename in ['style.css', 'favicon.ico']:
         pass
     else:
-        # If it's not starting with 'js/' and isn't an allowed root file, reject.
         abort(404, description="Resource not found or path not allowed")
 
     # --- Security Check: Prevent directory traversal ---
     safe_path = os.path.normpath(os.path.join(directory_to_serve, file_to_serve))
     if not safe_path.startswith(directory_to_serve):
-        abort(403) # Forbidden access
+        abort(403)
 
     # --- Check if file exists and serve ---
     if os.path.exists(safe_path) and os.path.isfile(safe_path):
@@ -50,23 +48,22 @@ def serve_files(filename):
             if file_to_serve.endswith('.js'):
                  mimetype = 'application/javascript'
             elif file_to_serve.endswith('.ico'):
-                 # Ensure correct MIME type for icons
                  mimetype = 'image/vnd.microsoft.icon'
             return send_from_directory(directory_to_serve, file_to_serve, mimetype=mimetype)
         except Exception as e:
             print(f"Error serving file {filename}: {e}")
-            abort(500) # Internal Server Error
+            abort(500)
     else:
         # File does not exist at the calculated path
         print(f"Not Found: File does not exist at path: {safe_path}")
         if filename == 'favicon.ico':
-             return Response(status=204) # Standard practice for missing default favicon
+             return Response(status=204)
         else:
             abort(404, description=f"Resource '{filename}' not found.")
 
 
 
-# --- CORRECTED API Route ---
+# --- API Route ---
 @app.route('/api/route', methods=['POST'])
 def proxy_route_request():
     """
@@ -76,14 +73,11 @@ def proxy_route_request():
     print("Received request on /api/route")
 
     frontend_payload = None
-    # *** FIX: Initialize payload_obtained HERE (Before the try block) ***
     payload_obtained = False
-    # *** END FIX ***
 
     try:
-        # Try get_json first
         frontend_payload = request.get_json()
-        if frontend_payload is not None: # Check for None specifically
+        if frontend_payload is not None:
              print("Successfully parsed JSON using request.get_json()")
              payload_obtained = True
         else:
@@ -97,16 +91,13 @@ def proxy_route_request():
                      payload_obtained = True # Parsed successfully
                  except Exception as parse_err:
                       print(f"Failed to parse/decode request.data: {parse_err}")
-                      # Keep payload_obtained as False
              else:
                  print("request.data is also empty.")
 
     except Exception as e:
         print(f"Error getting/parsing JSON payload: {e}")
-        # Keep payload_obtained as False implicitly here, but it was already False
 
     # --- Check if payload was successfully obtained ---
-    # Now payload_obtained is guaranteed to exist because it was initialized above
     if not payload_obtained:
         print("Error: Failed to obtain valid JSON payload from frontend request.")
         return jsonify({"error": "Invalid request", "details": "No valid JSON payload received."}), 400
@@ -117,7 +108,7 @@ def proxy_route_request():
 
     print(f"Frontend Payload (parsed): {json.dumps(frontend_payload)}")
 
-    # --- Communicate with C++ Backend (Keep this entire section as it was from the previous valid version) ---
+    # --- Communicate with C++ Backend ---
     backend_response_str = None
     error_message = None
     status_code = 500
@@ -187,4 +178,4 @@ if __name__ == '__main__':
     print(f"Serving JS files from: {JS_DIR}")
     print(f"Proxying API requests to C++ backend at {CPP_BACKEND_HOST}:{CPP_BACKEND_PORT}")
     print("Starting Flask server on http://localhost:5000 (or http://0.0.0.0:5000)")
-    app.run(host='0.0.0.0', port=5000, debug=True) # Use debug=False for production
+    app.run(host='0.0.0.0', port=5000, debug=True)

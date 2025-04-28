@@ -63,25 +63,25 @@ private:
     // Helper for finding best route
     std::optional<BestRouteResult> findBestRouteToDestination(
         const StationList& selectedStartStations,
-        const Graph::Station& endStationPair,
+        const Graph::Station& endStationPair, // Takes single end station
         const RequestData& gaParams) const;
 
     // Additional Helpers
     std::optional<Graph::Station> selectClosestStation(const Utilities::Coordinates& c, const StationList& allNearby) const;
     void selectRepresentativeStations(const Utilities::Coordinates& c, const StationList& allNearby, StationList& selected) const;
-    static RequestHandler::GaTaskResult runSingleGaTask(const int startId, const int endId, const RequestHandler::RequestData& gaParams, const Graph& graph);
+    static RequestHandler::GaTaskResult runSingleGaTask(int startId, int endId, const RequestHandler::RequestData& gaParams, const Graph& graph);
 
     json formatRouteResponse(const BestRouteResult& bestResult, const RequestData& inputData) const;
 
     static std::vector<Graph::Station> reconstructIntermediateStops(
-        const int segmentStartCode,
-        const int segmentEndCode,
+        int segmentStartCode,
+        int segmentEndCode,
         const std::string& lineId,
         const Graph& graph);
 
     static void addIntermediateStops(
         json& stepJson, const Graph::TransportationLine& lineTaken,
-        const int segmentStartCode, const int segmentEndCode, const Graph& graph);
+        int segmentStartCode, int segmentEndCode, const Graph& graph);
 
     static void addActionDetails(
         json& stepJson, size_t i,

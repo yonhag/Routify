@@ -85,21 +85,20 @@ size_t Graph::getStationCount() const
 /*
 * Returns the nearby stations, sorted by distance
 */
-std::vector<std::pair<int, Graph::Station>> Graph::getNearbyStations(const Utilities::Coordinates& userCoords) const {
-    // Find nearby stations
-    std::vector<std::pair<int, Station>> nearbyStations;
+std::vector<Graph::Station> Graph::getNearbyStations(const Utilities::Coordinates& userCoords) const {
+    std::vector<Station> nearbyStations;
     for (const auto& [id, station] : _map) {
         double distance = Utilities::calculateHaversineDistance(station.coordinates, userCoords);
         if (distance <= this->maxNearbyDistance) {
-            nearbyStations.push_back({ id, station });
+            nearbyStations.push_back(station);
         }
     }
 
     // Sort by distance
     std::sort(nearbyStations.begin(), nearbyStations.end(),
         [&userCoords](const auto& a, const auto& b) {
-            double distA = Utilities::calculateHaversineDistance(a.second.coordinates, userCoords);
-            double distB = Utilities::calculateHaversineDistance(b.second.coordinates, userCoords);
+            double distA = Utilities::calculateHaversineDistance(a.coordinates, userCoords);
+            double distB = Utilities::calculateHaversineDistance(b.coordinates, userCoords);
             return distA < distB;
         });
 

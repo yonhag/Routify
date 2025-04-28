@@ -305,14 +305,15 @@ json RequestHandler::findNearbyStationsForRoute(const RequestData& inputData, Ne
 }
 
 RequestHandler::GaTaskResult RequestHandler::runSingleGaTask(
-    const int startId,
-    const int endId,
+    int startId,
+    int endId,
     const RequestHandler::RequestData& gaParams, // Use the correct struct name
     const Graph& graph) // Pass Graph by CONST reference
 {
     RequestHandler::GaTaskResult result;
     result.startStationId = startId;
     result.endStationId = endId;
+    // std::cout << "  [Thread " << std::this_thread::get_id() << "] Starting GA for pair (" << startId << " -> " << endId << ")" << std::endl;
 
     try {
         // --- UPDATED Population Constructor Call ---
@@ -401,6 +402,8 @@ std::optional<RequestHandler::BestRouteResult> RequestHandler::findBestRouteToDe
     // --- Collect Results Phase ---
     for (size_t i = 0; i < futures.size(); ++i) { // Loop through futures
         try {
+            // fut.get() blocks until the task is complete and returns the GaTaskResult.
+            // It will re-throw any exception caught from the task function.
             GaTaskResult currentResult = futures[i].get();
 
             std::cout << "  Task completed for start station " << currentResult.startStationId << ". Success: " << currentResult.success << ", Fitness: " << currentResult.fitness << std::endl;
@@ -408,9 +411,9 @@ std::optional<RequestHandler::BestRouteResult> RequestHandler::findBestRouteToDe
             // Check if this result is valid and better than the current overall best
             if (currentResult.success && currentResult.fitness > overallBest.fitness) {
                 overallBest.fitness = currentResult.fitness;
-                overallBest.route = std::move(currentResult.route); 
-                overallBest.startStationCode = currentResult.startStationId; 
-                overallBest.endStationId = currentResult.endStationId;     
+                overallBest.route = std::move(currentResult.route); // Move the route data
+                overallBest.startStationCode = currentResult.startStationId; // Record the start ID
+                overallBest.endStationId = currentResult.endStationId;     // Record the end ID
                 std::cout << "    *** New overall best route found! Start: " << overallBest.startStationCode << ", Fitness: " << overallBest.fitness << " ***" << std::endl;
             }
             else if (!currentResult.success) {
@@ -419,6 +422,9 @@ std::optional<RequestHandler::BestRouteResult> RequestHandler::findBestRouteToDe
 
         }
         catch (const std::exception& e) {
+            // Catch exceptions re-thrown by fut.get()
+            // We don't know which startId failed just from the index 'i' easily,
+            // but we can log the general failure. The task itself logs specifics.
             std::cerr << "  Exception caught while getting result from future #" << i << ": " << e.what() << std::endl;
         }
         catch (...) {
@@ -526,6 +532,7 @@ std::optional<Graph::Station> RequestHandler::selectClosestStation(
         return closestStation;
     }
     else {
+        // Should only happen if allNearby was somehow non-empty but contained no valid stations?
         return std::nullopt;
     }
 }
@@ -674,6 +681,7 @@ void RequestHandler::selectRepresentativeStations(
         }
     }
 
+    // Ensure we don't exceed 3 selections (shouldn't happen with the logic, but as a safeguard)
     if (selected.size() > 3) {
         selected.resize(3);
     }
@@ -681,8 +689,8 @@ void RequestHandler::selectRepresentativeStations(
 } // End of selectRepresentativeStations
 
 std::vector<Graph::Station> RequestHandler::reconstructIntermediateStops(
-    const int segmentStartCode,
-    const int segmentEndCode,
+    int segmentStartCode, // Correct order: start, end, lineId, graph
+    int segmentEndCode,
     const std::string& lineId,
     const Graph& graph)
 {
@@ -712,32 +720,37 @@ std::vector<Graph::Station> RequestHandler::reconstructIntermediateStops(
                 visitedInSegment.insert(currentCode);
                 // Add the station *arrived at* (unless it's the final segment end)
                 if (currentCode != segmentEndCode) {
+                    // Ensure station exists before adding
                     intermediatePath.push_back(graph.getStationByCode(currentCode));
                 }
                 foundNext = true;
             }
             else {
+                // Log warning: Failed to find next stop
                 break;
             }
         }
         catch (const std::exception& e) {
+            // Log warning: Exception during reconstruction
             break;
         }
         if (!foundNext) break;
     }
+    // Add warnings for MAX_STEPS or not reaching end if desired
     return intermediatePath;
 }
 
 
 void RequestHandler::addIntermediateStops(
     json& stepJson, const Graph::TransportationLine& lineTaken,
-    const int segmentStartCode, const int segmentEndCode, const Graph& graph)
+    int segmentStartCode, int segmentEndCode, const Graph& graph)
 {
     bool isPublic = lineTaken.id != "Walk" && lineTaken.id != "Start";
     stepJson["intermediate_stops"] = json::array();
 
     if (isPublic && segmentStartCode != segmentEndCode) {
         try {
+            // *** CORRECTED CALL to reconstructIntermediateStops ***
             auto pathStations = RequestHandler::reconstructIntermediateStops(
                 segmentStartCode,
                 segmentEndCode,
@@ -745,7 +758,8 @@ void RequestHandler::addIntermediateStops(
                 graph
             );
 
-            if (pathStations.size() > 0) {
+            // The rest of the logic remains the same
+            if (pathStations.size() > 0) { // PathStations contains only INTERMEDIATE ones now
                 for (const auto& st : pathStations) {
                     stepJson["intermediate_stops"].push_back({
                         {"code", st.code}, {"name", st.name},

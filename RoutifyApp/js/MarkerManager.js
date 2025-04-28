@@ -65,7 +65,7 @@ class MarkerManager {
         const intermediateStopOptions = { radius: 3, color: '#555', weight: 1, fillColor: '#888', fillOpacity: 0.7, title: "Intermediate Stop" };
 
         // --- 1. Initial Walk ---
-        const firstStepFromCoords = [steps[0].from_lat, steps[0].from_long];
+        const firstStepFromCoords = [steps[0].from.lat, steps[0].from.long];
         const userCoords = [userLocation.lat, userLocation.lng];
         if (!this.isValidCoordinate(firstStepFromCoords)) { console.error("Invalid coords for first step 'from'.", steps[0]); return; }
         // Draw initial walk if user location is different from the first station
@@ -86,8 +86,8 @@ class MarkerManager {
         // --- 3. Loop Through Steps (Excluding the Final One) ---
         for (let i = 0; i <= loopEndIndex; i++) {
             const step = steps[i];
-            const fromCoords = [step.from_lat, step.from_long];
-            const toCoords = [step.to_lat, step.to_long];
+            const fromCoords = [step.from.lat, step.from.long];
+            const toCoords = [step.to.lat, step.to.long];
 
             if (!this.isValidCoordinate(fromCoords) || !this.isValidCoordinate(toCoords)) {
                 console.warn(`Invalid coords in step ${i}, skipping drawing.`, step);
@@ -147,7 +147,7 @@ class MarkerManager {
         let finalOriginCoords; // Coords of the point where the *very last segment* starts
 
         if (steps.length === 1) { // Only one step in the whole route
-            finalOriginCoords = [steps[0].from_lat, steps[0].from_long];
+            finalOriginCoords = [steps[0].from.lat, steps[0].from.long];
              // If the single step was walk, origin might effectively be user start
              if (isLastStepWalk && (Math.abs(userCoords[0] - finalOriginCoords[0]) < 0.00001 && Math.abs(userCoords[1] - finalOriginCoords[1]) < 0.00001)) {
                   finalOriginCoords = userCoords; // Use user coords if first step walk matches user location
@@ -155,7 +155,7 @@ class MarkerManager {
 
         } else { // More than one step
             // The origin is the end point of the second-to-last step
-            finalOriginCoords = [steps[lastStepIndex - 1].to_lat, steps[lastStepIndex - 1].to_long];
+            finalOriginCoords = [steps[lastStepIndex - 1].to.lat, steps[lastStepIndex - 1].to.long];
         }
 
         // --- Validate finalOriginCoords ---
@@ -177,8 +177,8 @@ class MarkerManager {
                 // Draw that last transit step first.
                 console.log("[MarkerManager] Final step is transit. Drawing transit segment first.");
                 const lastStep = steps[lastStepIndex];
-                const lastStepFromCoords = [lastStep.from_lat, lastStep.from_long]; // Should match finalOriginCoords
-                const lastStepToCoords = [lastStep.to_lat, lastStep.to_long]; // Endpoint of the transit
+                const lastStepFromCoords = [lastStep.from.lat, lastStep.from.long]; // Should match finalOriginCoords
+                const lastStepToCoords = [lastStep.to.lat, lastStep.to.long]; // Endpoint of the transit
 
                 if (this.isValidCoordinate(lastStepFromCoords) && this.isValidCoordinate(lastStepToCoords)) {
                      let segmentPoints = [lastStepFromCoords];
@@ -321,7 +321,7 @@ class MarkerManager {
      * Clears existing route markers and adds new ones based on the steps array
      * received from the backend.
      * @param {Array} stepsArray - Array of step objects from the backend response.
-     * Each step should have coordinates (e.g., to_lat/to_long or lat/long) and action.
+     * Each step should have coordinates (e.g., to.lat/to.long or lat/long) and action.
      */
     addMarkersFromSteps(stepsArray) {
         if (!this.map) { console.error("Map not initialized for addMarkersFromSteps."); return; }
@@ -341,8 +341,8 @@ class MarkerManager {
 
             try {
                 if ((step.action === "Take line" || step.action === "Walk") &&
-                    typeof step.to_lat === 'number' && typeof step.to_long === 'number') {
-                        position = { lat: step.to_lat, lng: step.to_long };
+                    typeof step.to.lat === 'number' && typeof step.to.long === 'number') {
+                        position = { lat: step.to.lat, lng: step.to.long };
                         title += ` to ${step.to || 'destination'}`;
                         if(step.line_id) title += ` (Line: ${step.line_id})`;
 
