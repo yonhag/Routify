@@ -98,7 +98,6 @@ json RequestHandler::handleGetLines(const json& request_json) const {
         catch (...) {
             lineObj["to_name"] = "[Station Code Not Found]"; // Handle case where 'to' code might be invalid
         }
-        // Add other relevant line info if needed (e.g., type, travelTime)
         lineArray.push_back(lineObj);
     }
     return { {"stationId", stationId}, {"lines", lineArray} };
@@ -152,7 +151,7 @@ json RequestHandler::handleFindRouteCoordinates(const json& request_json) const 
     std::optional<BestRouteResult> bestResultOpt = findBestRouteToDestination(
         selectedStartStations,
         closestEndStationPair,
-        inputData // Pass GA params and coords needed by Population/Fitness
+        inputData 
     );
 
     // 6. Post-Process Result: Compare Direct Walk vs Station Route
@@ -193,7 +192,6 @@ json RequestHandler::handleFindRouteCoordinates(const json& request_json) const 
     bool onlyWalkingInStationRoute = true;
     if (!bestResult.route.getVisitedStations().empty()) {
         for (const auto& vs : bestResult.route.getVisitedStations()) {
-            // Need Route::isPublicTransport or similar check. Assume simple check for now.
             if (vs.line.id != "Walk" && vs.line.id != "Start") {
                 onlyWalkingInStationRoute = false;
                 break;
@@ -215,7 +213,6 @@ json RequestHandler::handleFindRouteCoordinates(const json& request_json) const 
         }
         else { /* Handle case where direct walk is too long, but route was only walking */
             std::cerr << "Warning: Route only involved walking, but direct walk too long. Formatting walk route." << std::endl;
-            // Fall through to format the station-based walk route
         }
     }
 
@@ -238,16 +235,15 @@ json RequestHandler::handleFindRouteCoordinates(const json& request_json) const 
         finalWalkDist = Utilities::calculateHaversineDistance(_graph.getStationByCode(bestResult.endStationId).coordinates, inputData.endCoords);
     }
     catch (...) {}
-    const double MAX_FINAL_WALK_KM = 1.5; // Example limit
+    const double MAX_FINAL_WALK_KM = 1.5;
     if (finalWalkDist > MAX_FINAL_WALK_KM) {
         // Add warning when formatting
-        json response = formatRouteResponse(bestResult, inputData); // Pass inputData
+        json response = formatRouteResponse(bestResult, inputData); 
         response["warning"] = "Route requires a long final walk (" + std::to_string(finalWalkDist) + " km)";
         return response;
     }
 
-    // Default: Format the station route
-    return formatRouteResponse(bestResult, inputData); // Pass inputData
+    return formatRouteResponse(bestResult, inputData); 
 }
 
 
@@ -307,28 +303,26 @@ json RequestHandler::findNearbyStationsForRoute(const RequestData& inputData, Ne
 RequestHandler::GaTaskResult RequestHandler::runSingleGaTask(
     const int startId,
     const int endId,
-    const RequestHandler::RequestData& gaParams, // Use the correct struct name
-    const Graph& graph) // Pass Graph by CONST reference
+    const RequestHandler::RequestData& gaParams,
+    const Graph& graph)
 {
     RequestHandler::GaTaskResult result;
     result.startStationId = startId;
     result.endStationId = endId;
 
     try {
-        // --- UPDATED Population Constructor Call ---
-        // Pass coordinates from gaParams
         Population pop(gaParams.populationSize, startId, endId, graph,
-            gaParams.startCoords, gaParams.endCoords); // Pass user and destination coords
+            gaParams.startCoords, gaParams.endCoords);
 
         pop.evolve(gaParams.generations, gaParams.mutationRate);
 
         // getBestSolution internally uses coords for fitness comparison during evolution
-        const Route& pairBestRoute = pop.getBestSolution(); // Can throw if pop empty
+        const Route& pairBestRoute = pop.getBestSolution();
 
         // --- UPDATED getFitness Call ---
         // Pass coordinates from gaParams
         double fitness = pairBestRoute.getFitness(startId, endId, graph,
-            gaParams.startCoords, gaParams.endCoords); // Pass coords
+            gaParams.startCoords, gaParams.endCoords);
 
         // Check validity (doesn't need coords) and fitness
         if (pairBestRoute.isValid(startId, endId, graph) && fitness > 0.0 && !std::isnan(fitness)) {
@@ -355,17 +349,16 @@ RequestHandler::GaTaskResult RequestHandler::runSingleGaTask(
         result.success = false;
     }
 
-    return result; // Return the result struct
+    return result;
 }
 
 // Helper 4: Iterate through pairs and find the best route
-
 std::optional<RequestHandler::BestRouteResult> RequestHandler::findBestRouteToDestination(
     const StationList& selectedStartStations,
     const Graph::Station& endStationPair,
     const RequestData& gaParams) const
 {
-    BestRouteResult overallBest; // Holds the final best result (from BestRouteResult struct)
+    BestRouteResult overallBest; // Holds the final best result
     overallBest.fitness = -1.0; // Initialize fitness to invalid
     int endCode = endStationPair.code;
 
@@ -382,9 +375,6 @@ std::optional<RequestHandler::BestRouteResult> RequestHandler::findBestRouteToDe
             continue; // Skip if start is the same as the chosen end
         }
 
-        // Launch the task asynchronously.
-        // std::launch::async policy requests execution on a new thread if possible.
-        // std::cref(_graph) passes the graph by const reference without copying.
         futures.push_back(
             std::async(std::launch::async, runSingleGaTask, startCode, endCode, gaParams, std::cref(_graph))
         );
