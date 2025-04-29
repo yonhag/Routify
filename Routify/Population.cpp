@@ -9,10 +9,10 @@
 #include <queue>
 
 
-// --- BFS Pathfinding Implementation (Modified Reconstruction) ---
+// --- BFS Pathfinding Implementation ---
 namespace {
 
-    struct BfsNode { // Keep BfsNode as is (stores parent code)
+    struct BfsNode {
         int stationCode;
         int parentCode;
         std::string lineIdFromParent;
@@ -46,7 +46,7 @@ namespace {
 
         int currentCode = -1;
         bool found = false;
-        while (!q.empty()) { // (BFS Exploration loop remains the same)
+        while (!q.empty()) {
             currentCode = q.front(); q.pop();
             if (currentCode == endCode) { found = true; break; }
             try {
@@ -83,7 +83,6 @@ namespace {
 
                     if (lineUsed.id == "Error" && nodeInfo.parentCode != -1) return {}; // Line lookup failed
 
-                    // *** ADDED: Pass nodeInfo.parentCode to VisitedStation constructor ***
                     reversed_path.push_back(Route::VisitedStation(station, lineUsed, nodeInfo.parentCode));
                     traceCode = nodeInfo.parentCode; // Move to the parent
 
@@ -114,7 +113,6 @@ Population::Population(const int size, const int startId, const int destinationI
     : _graph(graph), _startId(startId), _destinationId(destinationId),
     _userCoords(userCoords), _destCoords(destCoords) // Initialize members
 {
-    // ... (validation, seeding, reserve) ...
     if (size <= 0) { throw std::invalid_argument("Population size must be positive."); }
     
     std::random_device rd; 
@@ -214,7 +212,6 @@ void Population::evolve(const int generations, const double mutationRate) {
                 Route child = Route::crossover(_routes[idx1], _routes[idx2], _gen);
                 child.mutate(mutationRate, _gen, _startId, _destinationId, _graph);
 
-                // Add the new child regardless of validity (selection will handle it)
                 newGeneration.push_back(child);
 
                 // Safety break if loop runs too long (shouldn't happen if targetSize is reached)
@@ -231,10 +228,9 @@ void Population::evolve(const int generations, const double mutationRate) {
 
         // --- Reporting ---
         if (!_routes.empty()) {
-            // Find best fitness in the *current* new generation
+            // Find best fitness in the new generation
             const Route& best_gen_route = *std::max_element(_routes.begin(), _routes.end(),
                 [this](const Route& a, const Route& b) {
-                    // Pass member coordinates stored in the Population object
                     return a.getFitness(_startId, _destinationId, _graph, _userCoords, _destCoords) <
                         b.getFitness(_startId, _destinationId, _graph, _userCoords, _destCoords);
                 });
@@ -260,13 +256,11 @@ const Route& Population::getBestSolution() const {
     if (_routes.empty()) {
         throw std::runtime_error("Error: Attempted to get best solution from an empty or extinct population.");
     }
-    // Find the element with the maximum fitness
     auto best_it = std::max_element(_routes.begin(), _routes.end(),
         [this](const Route& a, const Route& b) {
             return a.getFitness(_startId, _destinationId, _graph, _userCoords, _destCoords) <
                 b.getFitness(_startId, _destinationId, _graph, _userCoords, _destCoords);
         });
-    // Check if max_element somehow failed (e.g., all NaN fitness - very unlikely)
     if (best_it == _routes.end()) {
         throw std::runtime_error("Error: Could not determine best solution (max_element failed).");
     }
@@ -276,24 +270,20 @@ const Route& Population::getBestSolution() const {
 
 // Selection: Sorts by fitness (descending) and keeps the top half (at least 1)
 void Population::performSelection() {
-    if (_routes.empty()) return; // Nothing to select from
+    if (_routes.empty()) return
 
-    // Sort routes by fitness, highest first. Handle potential NaNs.
     std::sort(_routes.begin(), _routes.end(),
         [this](const Route& a, const Route& b) {
-            // Pass member coordinates
             double fitnessA = a.getFitness(_startId, _destinationId, _graph, _userCoords, _destCoords);
             double fitnessB = b.getFitness(_startId, _destinationId, _graph, _userCoords, _destCoords);
             if (std::isnan(fitnessB)) return true;
             if (std::isnan(fitnessA)) return false;
-            return fitnessA > fitnessB; // Higher fitness first
+            return fitnessA > fitnessB;
         });
 
-    // Calculate the number to keep: Half rounded up, but minimum 1.
     size_t current_size = _routes.size();
     size_t keepCount = std::max(static_cast<size_t>(1), (current_size + 1) / 2);
 
-    // Resize if necessary
     if (keepCount < current_size) {
         _routes.resize(keepCount);
     }

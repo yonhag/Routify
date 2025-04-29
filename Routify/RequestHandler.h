@@ -17,8 +17,8 @@ private:
     
     // --- Helper Structs  ---
     struct RequestData {
-        Utilities::Coordinates startCoords; // User location
-        Utilities::Coordinates endCoords;   // Destination
+        Utilities::Coordinates startCoords; 
+        Utilities::Coordinates endCoords; 
         int generations = 1000;
         double mutationRate = 0.3;
         int populationSize = 100;
@@ -87,7 +87,6 @@ private:
         json& stepJson, size_t i,
         const std::vector<Route::VisitedStation>& visitedStations,
 		const Graph::TransportationLine& lineTaken);
-
 
     // Member Variables
     Graph _graph;

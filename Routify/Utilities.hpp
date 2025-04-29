@@ -1,8 +1,7 @@
 #pragma once
-#define _USE_MATH_DEFINES // For M_PI
-#include <cmath> // For trig functions, sqrt, etc. used in Haversine
+#define _USE_MATH_DEFINES
+#include <cmath>
 
-// Define M_PI if not available
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
@@ -17,10 +16,7 @@ namespace Utilities {
         double latitude = 0.0;
         double longitude = 0.0;
 
-        // Default constructor
         Coordinates() = default;
-
-        // Constructor with values
         Coordinates(double lat, double lon) : latitude(lat), longitude(lon) {}
 
         // Optional: Basic validity check
@@ -29,7 +25,6 @@ namespace Utilities {
                 longitude >= -180.0 && longitude <= 180.0;
         }
 
-        // Optional: Equality operator
         bool operator==(const Coordinates& other) const = default;
     };
     // --- End Coordinates Struct ---

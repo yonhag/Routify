@@ -48,7 +48,6 @@ void RequestHandler::handleRequest(Socket clientSocket)
 
     }
     catch (const json::parse_error& e) {
-        // ... (keep existing catch blocks) ...
         json error_resp = { {"error", "Invalid JSON format"}, {"details", e.what()} };
         response_str = error_resp.dump(2); std::cerr << "JSON Parse Error: " << e.what() << std::endl;
     }
@@ -157,7 +156,6 @@ json RequestHandler::handleFindRouteCoordinates(const json& request_json) const 
     // 6. Post-Process Result: Compare Direct Walk vs Station Route
     double directWalkTime = 0.0;
     double directWalkDistance = Utilities::calculateHaversineDistance(inputData.startCoords, inputData.endCoords);
-    // Use static const from Route if accessible, otherwise define locally
     if (Utilities::WALK_SPEED_KPH > 0) {
         directWalkTime = (directWalkDistance / Utilities::WALK_SPEED_KPH) * 60.0;
     }
@@ -188,7 +186,6 @@ json RequestHandler::handleFindRouteCoordinates(const json& request_json) const 
         inputData.endCoords
     );
 
-    // Decision Logic (Simplified walk check)
     bool onlyWalkingInStationRoute = true;
     if (!bestResult.route.getVisitedStations().empty()) {
         for (const auto& vs : bestResult.route.getVisitedStations()) {
@@ -200,11 +197,10 @@ json RequestHandler::handleFindRouteCoordinates(const json& request_json) const 
     }
 
     // Rule 1: Route was only walking between stations
-    if (onlyWalkingInStationRoute) { /* Return Direct Walk JSON if feasible */
+    if (onlyWalkingInStationRoute) {
         if (directWalkDistance < MAX_REASONABLE_WALK_KM) {
             return {
                {"status", "Direct walk recommended"}, {"reason", "Route involved no public transport"},
-               // ... (Direct walk details) ...
                 {"walk_distance_km", directWalkDistance}, {"walk_time_mins", directWalkTime},
                {"station_route_alternative_time_mins", totalStationRouteTime},
                {"from_coords", {{"lat", inputData.startCoords.latitude}, {"lon", inputData.startCoords.longitude}}},
@@ -319,12 +315,10 @@ RequestHandler::GaTaskResult RequestHandler::runSingleGaTask(
         // getBestSolution internally uses coords for fitness comparison during evolution
         const Route& pairBestRoute = pop.getBestSolution();
 
-        // --- UPDATED getFitness Call ---
-        // Pass coordinates from gaParams
         double fitness = pairBestRoute.getFitness(startId, endId, graph,
             gaParams.startCoords, gaParams.endCoords);
 
-        // Check validity (doesn't need coords) and fitness
+        // Check validity and fitness
         if (pairBestRoute.isValid(startId, endId, graph) && fitness > 0.0 && !std::isnan(fitness)) {
             result.route = pairBestRoute;   // Copy the valid route
             result.fitness = fitness;
@@ -358,11 +352,10 @@ std::optional<RequestHandler::BestRouteResult> RequestHandler::findBestRouteToDe
     const Graph::Station& endStationPair,
     const RequestData& gaParams) const
 {
-    BestRouteResult overallBest; // Holds the final best result
-    overallBest.fitness = -1.0; // Initialize fitness to invalid
+    BestRouteResult overallBest;
+    overallBest.fitness = -1.0;
     int endCode = endStationPair.code;
 
-    // Store the futures returned by std::async
     std::vector<std::future<GaTaskResult>> futures;
 
     std::cout << "Launching GA tasks asynchronously for " << selectedStartStations.size() << " start stations..." << std::endl;
@@ -372,7 +365,7 @@ std::optional<RequestHandler::BestRouteResult> RequestHandler::findBestRouteToDe
         int startCode = startPair.code;
         if (startCode == endCode) {
             std::cout << "  Skipping GA task for start=end station: " << startCode << std::endl;
-            continue; // Skip if start is the same as the chosen end
+            continue;
         }
 
         futures.push_back(
@@ -389,7 +382,7 @@ std::optional<RequestHandler::BestRouteResult> RequestHandler::findBestRouteToDe
     std::cout << "Waiting for " << futures.size() << " GA tasks to complete..." << std::endl;
 
     // --- Collect Results Phase ---
-    for (size_t i = 0; i < futures.size(); ++i) { // Loop through futures
+    for (size_t i = 0; i < futures.size(); ++i) {
         try {
             GaTaskResult currentResult = futures[i].get();
 
@@ -457,7 +450,6 @@ json RequestHandler::formatRouteResponse(const BestRouteResult& bestResult, cons
     try { segmentStartStationPtr = &_graph.getStationByCode(bestResult.startStationCode); } 
     catch (...)  {  } 
 
-    // Loop through each step/VisitedStation in the route
     for (size_t i = 0; i < visitedStations.size(); ++i) {
         const auto& currentVs = visitedStations[i];
         const auto& lineTaken = currentVs.line;
@@ -465,7 +457,6 @@ json RequestHandler::formatRouteResponse(const BestRouteResult& bestResult, cons
         stepJson["segment_index"] = i;
         stepJson["line_id"] = lineTaken.id;
 
-        // Get station info for where segment STARTED and ENDED (current step)
         json segmentStartJson, segmentEndJson;
         if (segmentStartStationPtr) { RequestHandler::getStationInfo(_graph, segmentStartStationPtr->code, segmentStartJson); }
         RequestHandler::getStationInfo(_graph, currentVs.station.code, segmentEndJson);
@@ -481,7 +472,7 @@ json RequestHandler::formatRouteResponse(const BestRouteResult& bestResult, cons
 
         resultJson["detailed_steps"].push_back(stepJson);
 
-        // Update pointer for the *next* segment's start station
+        // Update pointer for the next segment's start station
         segmentStartStationPtr = &currentVs.station;
     }
 
@@ -521,7 +512,6 @@ std::optional<Graph::Station> RequestHandler::selectClosestStation(
 }
 
 bool RequestHandler::getStationInfo(const Graph& graph, const int stationId, json& stationJson) {
-    // (Implementation as before)
     try {
         const Graph::Station& station = graph.getStationByCode(stationId);
         stationJson["name"] = station.name; stationJson["code"] = stationId;
@@ -536,8 +526,8 @@ bool RequestHandler::getStationInfo(const Graph& graph, const int stationId, jso
 
 void RequestHandler::selectRepresentativeStations(
     const Utilities::Coordinates& c,
-    const StationList& allNearby, // Input: all nearby stations found
-    StationList& selected)        // Output: the selected stations (up to 3)
+    const StationList& allNearby, 
+    StationList& selected)        
     const
 {
     selected.clear();
@@ -614,9 +604,8 @@ void RequestHandler::selectRepresentativeStations(
     int best_Sk_index = -1;
     double max_dist_from_S1 = -1.0;
 
-    // Iterate through the stations *excluding* the already selected closest (S1) and furthest (SN)
-    // indices considered: 1 to stationsWithDistance.size() - 2
-    for (size_t i = 1; i < stationsWithDistance.size() - 1; ++i) {
+    // Iterate through the stations excluding the already selected closest (S1) and furthest (SN)
+    for (size_t i = 1; i < stationsWithDistance.size() - 2; ++i) {
         const Graph::Station& candidate_Sk = stationsWithDistance[i].second;
 
         // Ensure this candidate hasn't already been selected (e.g., if SN was index 1)
@@ -642,10 +631,10 @@ void RequestHandler::selectRepresentativeStations(
     // Add the best S_k found, if any
     if (best_Sk_index != -1) {
         const Graph::Station& Sk = stationsWithDistance[best_Sk_index].second;
-        // Final check for uniqueness (should be redundant due to loop check, but safe)
+        // Final check for uniqueness
         if (!selectedIds.contains(Sk.code)) {
             selected.push_back(Sk);
-            selectedIds.insert(Sk.code); // Add to set, though not strictly needed now
+            selectedIds.insert(Sk.code);
             std::cout << "  Selected SK (Most Different from S1): ID " << Sk.code << " (Dist from S1: " << max_dist_from_S1 << ")" << std::endl;
         }
         else {
@@ -676,7 +665,6 @@ std::vector<Graph::Station> RequestHandler::reconstructIntermediateStops(
     const std::string& lineId,
     const Graph& graph)
 {
-    // (Implementation as provided before - traces the path)
     std::vector<Graph::Station> intermediatePath;
     std::unordered_set<int> visitedInSegment;
     int currentCode = segmentStartCode;
@@ -691,7 +679,6 @@ std::vector<Graph::Station> RequestHandler::reconstructIntermediateStops(
             const auto& linesFromCurrent = graph.getLinesFrom(currentCode);
             const Graph::TransportationLine* nextLine = nullptr;
             for (const auto& line : linesFromCurrent) {
-                // Match line ID and ensure next stop isn't backtracking (unless it's the end)
                 if (line.id == lineId && (!visitedInSegment.contains(line.to) || line.to == segmentEndCode)) {
                     nextLine = &line;
                     break;
@@ -700,7 +687,6 @@ std::vector<Graph::Station> RequestHandler::reconstructIntermediateStops(
             if (nextLine != nullptr) {
                 currentCode = nextLine->to;
                 visitedInSegment.insert(currentCode);
-                // Add the station *arrived at* (unless it's the final segment end)
                 if (currentCode != segmentEndCode) {
                     intermediatePath.push_back(graph.getStationByCode(currentCode));
                 }
@@ -760,10 +746,10 @@ void RequestHandler::addActionDetails(
     bool isStartPointOfRoute = (i == 0); 
     bool isEndPointOfRoute = ((i + 1) == visitedStations.size());
 
-    // Check if the line taken for *this* step is public transport
+    // Check if the line taken for this step is public transport
     bool currentStepIsPublic = lineTaken.id != "Walk" && lineTaken.id != "Start";
 
-    // --- Determine if a Transfer Happens *After* This Step ---
+    // --- Determine if a Transfer Happens After This Step ---
     bool isTransferPoint = false;
     if (!isEndPointOfRoute) {
         const auto& nextLine = visitedStations[i + 1].line; 
@@ -805,7 +791,7 @@ void RequestHandler::addActionDetails(
     }
     stepJson["action_description"] = actionDesc;
 
-    // --- Determine if Start/End Stations of *This Segment* are Action Points ---
+    // --- Determine if Start/End Stations of This Segment are Action Points ---
     stepJson["to_is_action_point"] = isEndPointOfRoute || isTransferPoint;
     stepJson["from_is_action_point"] = isStartPointOfRoute;
 }

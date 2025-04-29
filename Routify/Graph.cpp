@@ -105,11 +105,6 @@ std::vector<Graph::Station> Graph::getNearbyStations(const Utilities::Coordinate
     return nearbyStations;
 }
 
-/*
-* Simplified function to find stations between two points along a specific line.
-* Assumes a reasonably direct path exists in the graph for the given lineId
-* between the start and end points. Includes basic safeguards.
-*/
 std::vector<Graph::Station> Graph::getStationsAlongLineSegment(
     const std::string& lineId,
     int segmentStartStationId,
@@ -124,7 +119,6 @@ std::vector<Graph::Station> Graph::getStationsAlongLineSegment(
         const Station& startStation = getStationByCode(segmentStartStationId);
         pathStations.push_back(startStation);
 
-        // If start is already the end, we're done
         if (segmentStartStationId == segmentEndStationId) {
             return pathStations;
         }
@@ -132,7 +126,7 @@ std::vector<Graph::Station> Graph::getStationsAlongLineSegment(
     catch (const std::out_of_range& oor) {
         std::cerr << "Error [getStationsAlongLineSegment Simple]: Start station ID "
             << segmentStartStationId << " not found. " << oor.what() << std::endl;
-        return {}; // Return empty vector if start doesn't exist
+        return {};
     }
     catch (const std::exception& e) {
         std::cerr << "Error [getStationsAlongLineSegment Simple]: Exception getting start station " << segmentStartStationId << ": " << e.what() << std::endl;
@@ -171,7 +165,6 @@ std::vector<Graph::Station> Graph::getStationsAlongLineSegment(
                     // Check if it's a valid fallback (doesn't go back to immediate previous)
                     if (line.to != previousStationId && fallbackLine == nullptr) {
                         fallbackLine = &line;
-                        // Continue checking in case the direct target edge is later
                     }
                 }
             }
@@ -235,7 +228,7 @@ std::vector<Graph::Station> Graph::getStationsAlongLineSegment(
             << " from " << segmentStartStationId << " on line " << lineId << ". Returning partial path." << std::endl;
     }
 
-    // 5. Return the collected path (complete or partial)
+    // 5. Return the collected path
     return pathStations;
 }
 
@@ -291,12 +284,12 @@ void Graph::fetchGTFSTransportationLines() {
     std::getline(stopTimesFile, header);
     std::string line;
     int i = 0;
-    int lastId = -1;                        // Initialize to an invalid value
-    TransportationLine* lastLine = nullptr; // Pointer to the last line in the vector
+    int lastId = -1;
+    TransportationLine* lastLine = nullptr;
 
     while (std::getline(stopTimesFile, line)) {
         auto tokens = splitCSV(line);
-        if (tokens.size() < 4) continue;    // Ensure we have enough tokens
+        if (tokens.size() < 4) continue;
 
         std::string line_code = tokens[0];
         int id = std::stoi(tokens[1]);
@@ -320,15 +313,14 @@ void Graph::fetchGTFSTransportationLines() {
             lastLine = std::to_address(it);  // Update lastLine to point to the actual element in the vector.
         }
         else {
-            // Create a new transportation line.
             TransportationLine newLine;
             newLine.id = line_code;
             newLine.arrivalTimes.push_back(time);
             station.lines.push_back(newLine);
-            lastLine = &station.lines.back();  // lastLine references the last element inserted
+            lastLine = &station.lines.back();
         }
 
-        lastId = id;  // Update lastId to the current id.
+        lastId = id;
 
         if (i % 1000000 == 0)
             std::cout << "Processed " << i / 1000000 << "B lines, out of 20.6B" << std::endl;

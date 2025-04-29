@@ -1,12 +1,12 @@
 #include "Server.h"
 #include <iostream>
-#include <cstring>  // For memset
+#include <cstring>
 #include <winsock2.h>
 #include <ws2tcpip.h>
 
 
 Server::Server(const int port)
-    : serverSocket(),  // Creates a TCP socket using Socket's default constructor
+    : serverSocket(),
     port(port),
     running(false)
 {
@@ -67,7 +67,7 @@ void Server::acceptConnections() {
     while (running) {
         sockaddr_in clientAddr;
         int clientAddrSize = sizeof(clientAddr);
-        // Accept an incoming connection using the underlying descriptor.
+        // Accept an incoming connection
         SOCKET clientDescriptor = accept(serverSocket.getSocketDescriptor(),
             reinterpret_cast<sockaddr*>(&clientAddr),
             &clientAddrSize);

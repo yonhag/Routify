@@ -97,7 +97,6 @@ double Route::getTotalCost(const Graph& graph) const {
     double totalPublicTransportAerialDistance = 0.0;
     bool usedPublicTransport = false;
 
-    // Get the ID of the first station reliably
     int firstStationId = -1;
     if (!_stations.empty()) {
         firstStationId = _stations[0].station.code;
@@ -129,9 +128,8 @@ double Route::getTotalCost(const Graph& graph) const {
                 segmentStartId = firstStationId; // Use the ID we determined earlier
             }
             else if (segmentStartId == -1) {
-                // This indicates an issue if it's not the first segment
                 std::cerr << "Warning [getTotalCost]: Invalid prevStationCode (-1) for non-first segment index " << i << "." << std::endl;
-                continue; // Skip this segment if start ID is invalid
+                continue;
             }
 
             // Check if segment is valid (start and end are different and valid IDs)
@@ -148,10 +146,8 @@ double Route::getTotalCost(const Graph& graph) const {
 
                 }
                 catch (const std::out_of_range& oor) {
-                    // Catch errors if getStationById fails
                     std::cerr << "Warning [getTotalCost]: Failed station lookup for segment "
                         << segmentStartId << " -> " << segmentEndId << ". " << oor.what() << std::endl;
-                    // Optionally continue, or return an error cost? Continuing might underestimate cost.
                     continue;
                 }
                 catch (const std::exception& e) {
@@ -160,9 +156,8 @@ double Route::getTotalCost(const Graph& graph) const {
                     continue;
                 }
             }
-            // If segmentStartId == segmentEndId, the distance is 0, so no need to add.
-        } // end if isPublicTransport
-    } // end for loop through segments
+        }
+    }
 
     // --- Fare Calculation ---
     if (!usedPublicTransport) { return 0.0; }
@@ -200,7 +195,7 @@ const std::vector<Route::VisitedStation>& Route::getVisitedStations() const {
 bool Route::isValid(int startId, int destinationId, const Graph& graph) const {
     if (_stations.empty()) return false;
 
-    // Check Start Station (still needs name lookup for the very first station)
+    // Check Start Station
     try {
         // Ensure first VisitedStation's internal station matches the graph's station for startId
         if (_stations.front().station != graph.getStationByCode(startId)) {
@@ -211,7 +206,7 @@ bool Route::isValid(int startId, int destinationId, const Graph& graph) const {
             return false;
         }
     }
-    catch (const std::runtime_error&) { return false; } // Catch getStationById or name lookup errors
+    catch (const std::runtime_error&) { return false; }
     catch (const std::out_of_range&) { return false; }
 
     // Handle special case: start == end
@@ -230,15 +225,14 @@ bool Route::isValid(int startId, int destinationId, const Graph& graph) const {
     catch (...) { return false; }
 
 
-    // --- Check Transitions (USING prevStationCode) ---
+    // --- Check Transitions ---
     for (size_t i = 1; i < _stations.size(); ++i) {
-        const auto& vs = _stations[i]; 
+        const auto& vs = _stations[i];
         const auto& line_taken = vs.line;
-        int current_station_code = line_taken.to; 
-        int prev_station_code = vs.prevStationCode; 
+        int current_station_code = line_taken.to;
+        int prev_station_code = vs.prevStationCode;
 
-        // Basic check: previous code must be valid
-        if (prev_station_code == -1 && i > 0) { 
+        if (prev_station_code == -1 && i > 0) {
             return false;
         }
 
@@ -247,16 +241,14 @@ bool Route::isValid(int startId, int destinationId, const Graph& graph) const {
                 return false;
             }
         }
-        catch (...) { return false; } // Failed to get station by current_station_code
+        catch (...) { return false; }
 
-        // Skip line origin checks for special lines
-        if (line_taken.id == "Start") { continue; } // Already checked start node validity
+        if (line_taken.id == "Start") { continue; }
         if (line_taken.id == "Walk") { continue; }
 
-        // Check 2: Does the line originate correctly from prev_station_code?
         bool line_found_at_source = false;
         try {
-            if (!graph.hasStation(prev_station_code)) { 
+            if (!graph.hasStation(prev_station_code)) {
                 return false;
             }
             const auto& lines_from_prev = graph.getLinesFrom(prev_station_code);
@@ -267,14 +259,14 @@ bool Route::isValid(int startId, int destinationId, const Graph& graph) const {
                 }
             }
         }
-        catch (const std::out_of_range&) { return false; } // Error getting lines
+        catch (const std::out_of_range&) { return false; }
 
         if (!line_found_at_source) {
             return false;
         }
-    } // End transition check loop
+    }
 
-    return true; // All checks passed
+    return true;
 }
 
 
@@ -329,9 +321,9 @@ double Route::getFitness(int startId, int destinationId, const Graph& graph,
     const double walk_penalty_factor = 2.0;
 
     // --- Calculate Score ---
-    double baseTime = initialWalkTime + totalStationToStationTime + finalWalkTime; // Base is still calculated same way conceptually
+    double baseTime = initialWalkTime + totalStationToStationTime + finalWalkTime;
     double score = (time_weight * baseTime) +
-        (walk_penalty_factor - 1.0) * totalWalkTime + // Apply penalty based on total raw walk time
+        (walk_penalty_factor - 1.0) * totalWalkTime +
         (cost_weight * totalCost) + (transfers * transfer_penalty);
 
     // --- Convert Score to Fitness ---
@@ -365,8 +357,7 @@ bool Route::generatePathSegment(int segmentStartId, int segmentEndId, const Grap
             if (const double MAX_WALKING_DISTANCE_SEGMENT = 0.5;
                 distanceToSegmentEnd < MAX_WALKING_DISTANCE_SEGMENT) {
                 Graph::TransportationLine walkingEdge("Walk", segmentEndId, (distanceToSegmentEnd / 5.0) * 60.0, Graph::TransportMethod::Walk);
-                // *** Use correct prevCode when adding final walking step ***
-                segment.push_back(VisitedStation(destStation, walkingEdge, currentCode)); // currentCode is the station *before* the walk
+                segment.push_back(VisitedStation(destStation, walkingEdge, currentCode));
                 currentCode = segmentEndId;
                 break;
             }
@@ -374,9 +365,8 @@ bool Route::generatePathSegment(int segmentStartId, int segmentEndId, const Grap
             const auto& availableLines = graph.getLinesFrom(currentCode);
             if (availableLines.empty()) return false;
 
-            // (Guided Selection Logic - remains the same)
             std::vector<const Graph::TransportationLine*> validLines; std::vector<double> weights;
-            for (const auto& line : availableLines) { /* ... find valid lines/weights ... */
+            for (const auto& line : availableLines) {
                 int nextCode = line.to;
                 if (graph.hasStation(nextCode) && !visitedCodesSegment.contains(nextCode)) {
                     const Graph::Station& nextStation = graph.getStationByCode(nextCode);
@@ -402,7 +392,6 @@ bool Route::generatePathSegment(int segmentStartId, int segmentEndId, const Grap
 
             // Add the chosen step to the segment
             const Graph::Station& nextStation = graph.getStationByCode(chosenLinePtr->to);
-            // *** Pass the correct previous code (currentCode) ***
             segment.push_back(VisitedStation(nextStation, *chosenLinePtr, currentCode));
             currentCode = chosenLinePtr->to; // Move to the next station
             visitedCodesSegment.insert(currentCode);
@@ -414,7 +403,7 @@ bool Route::generatePathSegment(int segmentStartId, int segmentEndId, const Grap
     catch (...) { return false; }
 }
 
-// --- Mutate (MODIFIED) ---
+// --- Mutate ---
 void Route::mutate(double mutationRate, std::mt19937& gen, int startId, int destinationId, const Graph& graph) {
     std::uniform_real_distribution<> prob_dis(0.0, 1.0);
     if (prob_dis(gen) >= mutationRate) {
@@ -426,7 +415,7 @@ void Route::mutate(double mutationRate, std::mt19937& gen, int startId, int dest
     std::uniform_real_distribution<> type_dis(0.0, 1.0);
     double mutationTypeRoll = type_dis(gen);
 
-    // --- Mutation Type 1: Regenerate Tail Segment (Original Logic) ---
+    // --- Mutation Type 1: Regenerate Tail Segment ---
     if (mutationTypeRoll < 0.8 || _stations.size() <= 3) { // Also fallback if route too short for walk replacement
         if (this->_stations.size() <= 2) return; // Need 3+ for segment regen
 
@@ -451,7 +440,6 @@ void Route::mutate(double mutationRate, std::mt19937& gen, int startId, int dest
         const size_t MAX_SEGMENT_LEGS = 2;            // Check replacing 1 or 2 transit legs
 
         // Randomly choose start index of segment (must be at least 1, leaving start node)
-        // Ensure end index doesn't exceed bounds and allows for MAX_SEGMENT_LEGS
         size_t max_start_idx = _stations.size() - 1 - MAX_SEGMENT_LEGS;
         if (max_start_idx <= 0) return; // Cannot select a valid segment start
         std::uniform_int_distribution<> seg_start_dis(1, static_cast<int>(max_start_idx));
@@ -471,11 +459,9 @@ void Route::mutate(double mutationRate, std::mt19937& gen, int startId, int dest
             catch (...) { return; }
         }
         else {
-            before_segment_code = _stations[idx1].prevStationCode; // Use the reliable code
+            before_segment_code = _stations[idx1].prevStationCode;
         }
 
-
-        // Need code for the end station of the segment to create the walk line
         int segment_end_code = segment_end_vs.line.to; // The 'to' code of the line that reached the segment end station
 
 		auto before_station_coords = before_segment_vs.station.coordinates;
@@ -523,7 +509,7 @@ Route Route::crossover(const Route& parent1, const Route& parent2, std::mt19937&
 
     // Basic checks for valid crossover
     if (visited1.size() <= 2 || visited2.size() <= 2) {
-        // Not enough intermediate points, return one parent (e.g., the first one)
+        // Not enough intermediate points, return one parent
         return parent1;
     }
 
@@ -541,7 +527,7 @@ Route Route::crossover(const Route& parent1, const Route& parent2, std::mt19937&
     if (!commonIndices.empty()) {
         // Choose a random common station pair
         std::uniform_int_distribution<> common_dis(0, static_cast<int>(commonIndices.size() - 1));
-        const auto& [idx1, idx2] = commonIndices[common_dis(gen)]; // Indices in parent1 and parent2
+        const auto& [idx1, idx2] = commonIndices[common_dis(gen)];
 
         // Create child route by combining segments
         Route childRoute;
@@ -556,7 +542,6 @@ Route Route::crossover(const Route& parent1, const Route& parent2, std::mt19937&
         return childRoute;
     }
     else {
-        // Fallback: No common intermediate station found. Return one parent randomly.
         std::uniform_int_distribution<> parent_choice(0, 1);
         return (parent_choice(gen) == 0) ? parent1 : parent2;
     }

@@ -5,9 +5,9 @@
 class Route {
 public:
     struct VisitedStation {
-        Graph::Station station;         // The station object itself
-        Graph::TransportationLine line; // Line taken to reach this station
-        int prevStationCode;            // The code of the station before this one
+        Graph::Station station;
+        Graph::TransportationLine line;
+        int prevStationCode;
 
         VisitedStation(const Graph::Station& s, const Graph::TransportationLine& l, const int prevCode)
             : station(s), line(l), prevStationCode(prevCode) {

@@ -5,13 +5,10 @@
 
 class Server {
 public:
-    // Constructor takes the port number.
     explicit Server(const int port);
 
-    // Destructor cleans up resources.
     virtual ~Server();
 
-    // Start the server.
     void start();
 
 private:
