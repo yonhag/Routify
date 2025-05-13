@@ -41,7 +41,7 @@ public:
     std::vector<VisitedStation>& getMutableVisitedStations() { return _stations; }
 
     // Checks if the route is valid
-    bool isValid(int startId, int destinationId, const Graph& graph) const;
+    bool isValid(const int startId, const int destinationId, const Graph& graph) const;
 
     /*
     * --- Genetic Algorithm Methods ---
@@ -53,7 +53,7 @@ public:
         const Utilities::Coordinates& destCoords) const; // Clicked destination
 
 	// Mutates the route by regenerating a segment or replacing it with a walk.
-    void mutate(double mutationRate, std::mt19937& gen, int startId, int destinationId, const Graph& graph);
+    void mutate(const double mutationRate, std::mt19937& gen, const int startId, const int destinationId, const Graph& graph);
 
     // Combines two routes together to create a better one
     static Route crossover(const Route& parent1, const Route& parent2, std::mt19937& gen);
@@ -72,7 +72,7 @@ public:
 
 private:
     // Helper for mutation 
-    static bool generatePathSegment(int segmentStartId, int segmentEndId, const Graph& graph, std::mt19937& gen, std::vector<VisitedStation>& segment);
+    static bool generatePathSegment(const int segmentStartId, const int segmentEndId, const Graph& graph, std::mt19937& gen, std::vector<VisitedStation>& segment);
 
     // Calculates the approximate time it would take to walk between two coordinates
     static double calculateWalkTime(const Utilities::Coordinates& c1, const Utilities::Coordinates& c2);

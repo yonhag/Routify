@@ -192,7 +192,7 @@ const std::vector<Route::VisitedStation>& Route::getVisitedStations() const {
     return this->_stations;
 }
 
-bool Route::isValid(int startId, int destinationId, const Graph& graph) const {
+bool Route::isValid(const int startId, const int destinationId, const Graph& graph) const {
     if (_stations.empty()) return false;
 
     // Check Start Station
@@ -332,7 +332,7 @@ double Route::getFitness(int startId, int destinationId, const Graph& graph,
 }
 
 // --- generatePathSegment ---
-bool Route::generatePathSegment(int segmentStartId, int segmentEndId, const Graph& graph, std::mt19937& gen, std::vector<VisitedStation>& segment) {
+bool Route::generatePathSegment(const int segmentStartId, const int segmentEndId, const Graph& graph, std::mt19937& gen, std::vector<VisitedStation>& segment) {
     segment.clear();
     int currentCode = segmentStartId;
     const int maxSteps = 75;
@@ -404,7 +404,7 @@ bool Route::generatePathSegment(int segmentStartId, int segmentEndId, const Grap
 }
 
 // --- Mutate ---
-void Route::mutate(double mutationRate, std::mt19937& gen, int startId, int destinationId, const Graph& graph) {
+void Route::mutate(const double mutationRate, std::mt19937& gen, const int startId, const int destinationId, const Graph& graph) {
     std::uniform_real_distribution<> prob_dis(0.0, 1.0);
     if (prob_dis(gen) >= mutationRate) {
         return; 
